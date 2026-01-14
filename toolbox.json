@@ -3,7 +3,7 @@
   "description": "Packet replay + web UI",
   "interactive": true,
   "python": {
-    "script": "networkrunner-v1.py",
+    "script": "netrunner-v1.py",
     "venv": ".venv",
     "requirements": "requirements.txt"
   },
