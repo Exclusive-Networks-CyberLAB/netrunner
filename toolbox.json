@@ -1,6 +1,6 @@
 {
   "display_name": "Network Runner v1",
-  "description": "Runs networkrunner-v1.py",
+  "description": "Runs netrunner-v1.py",
   "interactive": true,
-  "entry": ["py", "-3", "networkrunner-v1.py"]
+  "entry": ["py", "-3", "netrunner-v1.py"]
 }
