@@ -1,774 +1,806 @@
-document.addEventListener('DOMContentLoaded', function () {
-    let statusInterval, trafficChart, chartTime = 0, currentTab = 'replayer';
-    const tabReplayer = document.getElementById('tab-replayer'), tabGenerator = document.getElementById('tab-generator');
-    const replayerPane = document.getElementById('replayer-pane'), generatorPane = document.getElementById('generator-pane');
+/**
+ * NetRunner OS — Main Application JavaScript
+ * Handles: Tab switching, PCAP viewer, traffic flow, rewriter/replay, generator, profiles.
+ */
 
-    const tabViewer = document.getElementById('tab-viewer');
-    const viewerPane = document.getElementById('viewer-pane');
-    const viewerPlaceholder = document.getElementById('viewer-placeholder');
-    const viewerNavToReplayer = document.getElementById('viewer-nav-to-replayer');
+document.addEventListener('DOMContentLoaded', () => {
 
-    const replayerForm = document.getElementById('replayerForm'), generatorForm = document.getElementById('generatorForm');
-    const statusContainer = document.getElementById('statusContainer'), statusTitle = document.getElementById('statusTitle');
-    const stopBtn = document.getElementById('stopBtn'), progressBar = document.getElementById('progressBar');
-    const statusMessage = document.getElementById('statusMessage'), toggleConsoleBtn = document.getElementById('toggleConsoleBtn');
-    const consoleWrapper = document.getElementById('consoleWrapper'), consoleOutput = document.getElementById('consoleOutput');
-    const consoleArrow = document.getElementById('consoleArrow');
-    const pcapFileInput = document.getElementById('pcapFile');
+    // ═══════════════════════════════════════════════════════════════════
+    // STATE
+    // ═══════════════════════════════════════════════════════════════════
 
-    const discoveredHostsTable = document.getElementById('discoveredHostsTable');
-    const discoveredHostsBody = document.getElementById('discoveredHostsBody');
+    let analysisData = null;   // Stored result from analyze_pcap
+    let statusEventSource = null;
 
-    const packetViewer = document.getElementById('packetViewer');
-    const packetViewerBody = document.getElementById('packetViewerBody');
-    const packetDetails = document.getElementById('packetDetails');
+    // ═══════════════════════════════════════════════════════════════════
+    // TAB NAVIGATION
+    // ═══════════════════════════════════════════════════════════════════
+
+    const tabs = document.querySelectorAll('.tab');
+    const panes = document.querySelectorAll('.tab-pane');
+
+    function switchTab(tabId) {
+        tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
+        panes.forEach(p => p.classList.toggle('active', p.id === `pane-${tabId}`));
+    }
+
+    tabs.forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+    // Nav links
+    const rewriterNavLink = document.getElementById('rewriter-nav-to-viewer');
+    if (rewriterNavLink) rewriterNavLink.addEventListener('click', () => switchTab('viewer'));
+
+    // ═══════════════════════════════════════════════════════════════════
+    // VIEW MODE SWITCHING (within Viewer tab)
+    // ═══════════════════════════════════════════════════════════════════
+
+    const viewBtns = document.querySelectorAll('.view-mode-btn');
+    const viewPanels = document.querySelectorAll('.view-panel');
+
+    function switchView(viewId) {
+        viewBtns.forEach(b => b.classList.toggle('active', b.dataset.view === viewId));
+        viewPanels.forEach(p => p.classList.toggle('hidden', p.id !== `view-${viewId}`));
+    }
+
+    viewBtns.forEach(b => b.addEventListener('click', () => switchView(b.dataset.view)));
+
+    // ═══════════════════════════════════════════════════════════════════
+    // PCAP UPLOAD & ANALYSIS
+    // ═══════════════════════════════════════════════════════════════════
+
+    const pcapFile = document.getElementById('pcapFile');
+    const analyzeBtn = document.getElementById('analyzeBtn');
     const analysisStatus = document.getElementById('analysisStatus');
+    const viewerControls = document.getElementById('viewerControls');
+    const packetCount = document.getElementById('packetCount');
 
-    // New UI Elements
-    const viewerModeSelect = document.getElementById('viewerModeSelect');
-    const packetListView = document.getElementById('packetListView');
-    const endpointsView = document.getElementById('endpointsView');
-    const conversationsView = document.getElementById('conversationsView');
-    const endpointsBody = document.getElementById('endpointsBody');
-    const conversationsBody = document.getElementById('conversationsBody');
-    const exportConfigBtn = document.getElementById('exportConfigBtn');
-    const importConfigBtn = document.getElementById('importConfigBtn');
-    const importFile = document.getElementById('importFile');
-
-    // --- Config Management ---
-    const configNameInput = document.getElementById('configName');
-    const saveConfigBtn = document.getElementById('saveConfigBtn');
-    const configSelect = document.getElementById('configSelect');
-    const loadConfigBtn = document.getElementById('loadConfigBtn');
-    const deleteConfigBtn = document.getElementById('deleteConfigBtn');
-
-    // --- Asset Management ---
-    let assets = [];
-    const addAssetBtn = document.getElementById('addAssetBtn');
-    const assetNameInput = document.getElementById('assetName');
-    const assetIpInput = document.getElementById('assetIp');
-    const assetMacInput = document.getElementById('assetMac');
-    const assetListDiv = document.getElementById('assetList');
-
-    // Global state for packets
-    let currentPackets = [];
-    let currentEndpoints = [];
-    let currentConversations = [];
-    let selectedPacket = null;
-
-    // View Switching
-    if (viewerModeSelect) {
-        viewerModeSelect.addEventListener('change', () => {
-            const mode = viewerModeSelect.value;
-            console.log("Switching view to:", mode);
-
-            packetListView.classList.toggle('hidden', mode !== 'packets');
-            endpointsView.classList.toggle('hidden', mode !== 'endpoints');
-            conversationsView.classList.toggle('hidden', mode !== 'conversations');
-
-            // Hide details pane if not in packet mode
-            const detailsPane = document.getElementById('packetDetailsPane');
-            if (detailsPane) {
-                detailsPane.classList.toggle('hidden', mode !== 'packets');
-            }
-        });
-    }
-
-    const viewStatsBtn = document.getElementById('viewStatsBtn');
-    if (viewStatsBtn) {
-        viewStatsBtn.addEventListener('click', () => {
-            switchTab('viewer');
-            if (viewerModeSelect) {
-                viewerModeSelect.value = 'endpoints';
-                viewerModeSelect.dispatchEvent(new Event('change'));
-            }
-        });
-    }
-
-    async function fetchAssets() {
-        try {
-            const response = await fetch('/api/assets');
-            if (!response.ok) throw new Error('Failed to fetch assets');
-            assets = await response.json();
-            renderAssets();
-        } catch (error) {
-            console.error("Error fetching assets:", error);
-            assetListDiv.innerHTML = `<span class="text-pink-500">Error loading assets.</span>`;
-        }
-    }
-
-    function populateAllAssetSelects() {
-        const allSelects = document.querySelectorAll('.asset-select');
-        allSelects.forEach(sel => {
-            const currentVal = sel.value;
-            sel.innerHTML = '<option value="">Select Asset...</option>';
-            assets.forEach(asset => {
-                const option = document.createElement('option');
-                option.value = asset.id;
-                option.textContent = asset.name;
-                sel.appendChild(option);
-            });
-            sel.value = currentVal;
-        });
-    }
-
-    function renderAssets() {
-        assetListDiv.innerHTML = '';
-        assets.forEach(asset => {
-            const assetItem = document.createElement('div');
-            assetItem.className = 'text-xs flex justify-between items-center p-1 bg-black/30';
-            assetItem.innerHTML = `<span><strong class="text-cyan-300">${asset.name}:</strong> ${asset.ip} / ${asset.mac}</span><button data-id="${asset.id}" class="asset-delete-btn text-pink-500 font-bold text-lg">&times;</button>`;
-            assetListDiv.appendChild(assetItem);
-        });
-        populateAllAssetSelects();
-        document.querySelectorAll('.asset-delete-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const assetId = e.target.dataset.id;
-                try {
-                    const response = await fetch(`/api/assets/${assetId}`, { method: 'DELETE' });
-                    if (!response.ok) throw new Error('Failed to delete asset');
-                    fetchAssets();
-                } catch (error) {
-                    console.error("Error deleting asset:", error);
-                    alert("Error deleting asset.");
-                }
-            });
-        });
-    }
-
-    addAssetBtn.addEventListener('click', async () => {
-        const name = assetNameInput.value.trim();
-        const ip = assetIpInput.value.trim();
-        const mac = assetMacInput.value.trim();
-        if (name && ip && mac) {
-            try {
-                const response = await fetch('/api/assets', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, ip, mac })
-                });
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.error || 'Failed to add asset');
-                }
-                assetNameInput.value = assetIpInput.value = assetMacInput.value = '';
-                fetchAssets();
-            } catch (error) {
-                console.error("Error adding asset:", error);
-                alert(`Error: ${error.message}`);
-            }
-        } else {
-            alert('Please fill out all asset fields.');
-        }
+    pcapFile.addEventListener('change', () => {
+        analyzeBtn.disabled = !pcapFile.files.length;
     });
 
-    document.body.addEventListener('change', (e) => {
-        if (e.target.classList.contains('asset-select') && e.target.value !== '') {
-            const asset = assets.find(a => a.id == e.target.value);
-            if (!asset) return;
+    analyzeBtn.addEventListener('click', async () => {
+        if (!pcapFile.files.length) return;
 
-            if (e.target.closest('form').id === 'generatorForm') {
-                const targetBase = e.target.dataset.assetTarget;
-                const form = e.target.closest('form');
-                form.querySelector(`input[name="${targetBase}_ip"]`).value = asset.ip;
-                form.querySelector(`input[name="${targetBase}_mac"]`).value = asset.mac;
-            } else {
-                const input = e.target.nextElementSibling;
-                const targetInputType = input.dataset.validate;
-                if (targetInputType === 'ip') input.value = asset.ip;
-                if (targetInputType === 'mac') input.value = asset.mac;
-            }
-            e.target.value = '';
-            validateAllInputs();
-        }
-    });
-
-    // --- Config Management Logic ---
-    async function fetchConfigs() {
-        try {
-            const response = await fetch('/api/replay_configs');
-            if (!response.ok) throw new Error('Failed to fetch configs');
-            const configs = await response.json();
-            configSelect.innerHTML = '<option value="">Select a config...</option>';
-            configs.forEach(config => {
-                const option = document.createElement('option');
-                option.value = config.id;
-                option.textContent = config.name;
-                configSelect.appendChild(option);
-            });
-        } catch (error) {
-            console.error("Error fetching configs:", error);
-            configSelect.innerHTML = '<option value="">Error loading configs</option>';
-        }
-    }
-
-    saveConfigBtn.addEventListener('click', async () => {
-        const name = configNameInput.value.trim();
-        if (!name) {
-            alert('Please enter a name for the configuration.');
-            return;
-        }
-
-        const getMaps = (type) => {
-            const container = document.getElementById(`${type}MappingsContainer`);
-            return Array.from(container.children).map(row => ({
-                original: row.querySelector(`input[name="${type}_original"]`).value,
-                new: row.querySelector(`input[name="${type}_new"]`).value
-            })).filter(item => item.original && item.new);
-        };
-
-        const configData = {
-            name: name,
-            interface: replayerForm.elements['interface'].value,
-            replay_speed: replayerForm.elements['replay_speed'].value,
-            loop_replay: replayerForm.elements['loop_replay'].checked,
-            loop_count: replayerForm.elements['loop_count'].value ? parseInt(replayerForm.elements['loop_count'].value) : 0,
-            ttl: replayerForm.elements['ttl'].value ? parseInt(replayerForm.elements['ttl'].value) : null,
-            vlan_id: replayerForm.elements['vlan_id'].value ? parseInt(replayerForm.elements['vlan_id'].value) : null,
-            ip_map: getMaps('ip'),
-            mac_map: getMaps('mac'),
-            port_map: getMaps('port')
-        };
-
-        try {
-            const response = await fetch('/api/replay_configs', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(configData)
-            });
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.error || 'Failed to save config');
-            }
-            alert('Configuration saved successfully!');
-            fetchConfigs();
-        } catch (error) {
-            console.error("Error saving config:", error);
-            alert(`Error: ${error.message}`);
-        }
-    });
-
-    loadConfigBtn.addEventListener('click', async () => {
-        const configId = configSelect.value;
-        if (!configId) {
-            alert('Please select a configuration to load.');
-            return;
-        }
-        try {
-            const response = await fetch(`/api/replay_configs/${configId}`);
-            if (!response.ok) throw new Error('Failed to load config');
-            const config = await response.json();
-
-            replayerForm.elements['interface'].value = config.interface || '';
-            replayerForm.elements['replay_speed'].value = config.replay_speed || 'original';
-            replayerForm.elements['loop_replay'].checked = config.loop_replay;
-            loopCountContainer.classList.toggle('hidden', !config.loop_replay);
-            replayerForm.elements['loop_count'].value = config.loop_count || '';
-            replayerForm.elements['ttl'].value = config.ttl || '';
-            replayerForm.elements['vlan_id'].value = config.vlan_id || '';
-            configNameInput.value = config.name;
-
-            const populateMaps = (type, maps) => {
-                const container = document.getElementById(`${type}MappingsContainer`);
-                container.innerHTML = '';
-                if (maps) {
-                    maps.forEach(item => {
-                        addMappingRow(container, type, item.original);
-                        const newRow = container.lastElementChild;
-                        newRow.querySelector(`input[name="${type}_new"]`).value = item.new;
-                    });
-                }
-            };
-            populateMaps('ip', config.ip_map);
-            populateMaps('mac', config.mac_map);
-            populateMaps('port', config.port_map);
-
-            alert('Configuration loaded.');
-            validateAllInputs();
-        } catch (error) {
-            console.error("Error loading config:", error);
-            alert('Error loading configuration.');
-        }
-    });
-
-    deleteConfigBtn.addEventListener('click', async () => {
-        const configId = configSelect.value;
-        if (!configId) {
-            alert('Please select a configuration to delete.');
-            return;
-        }
-        if (!confirm('Are you sure you want to delete this configuration?')) return;
-
-        try {
-            const response = await fetch(`/api/replay_configs/${configId}`, { method: 'DELETE' });
-            if (!response.ok) throw new Error('Failed to delete config');
-            alert('Configuration deleted.');
-            fetchConfigs();
-        } catch (error) {
-            console.error("Error deleting config:", error);
-            alert('Error deleting configuration.');
-        }
-    });
-
-    function switchTab(activeTab) {
-        currentTab = activeTab;
-        tabReplayer.classList.toggle('active', activeTab === 'replayer');
-        tabGenerator.classList.toggle('active', activeTab === 'generator');
-        tabViewer.classList.toggle('active', activeTab === 'viewer');
-
-        replayerPane.classList.toggle('hidden', activeTab !== 'replayer');
-        generatorPane.classList.toggle('hidden', activeTab !== 'generator');
-        viewerPane.classList.toggle('hidden', activeTab !== 'viewer');
-    }
-    tabReplayer.addEventListener('click', () => switchTab('replayer'));
-    tabGenerator.addEventListener('click', () => switchTab('generator'));
-    tabViewer.addEventListener('click', () => switchTab('viewer'));
-    viewerNavToReplayer.addEventListener('click', () => switchTab('replayer'));
-
-    function addMappingRow(container, type, val1 = '') {
-        const p1 = `Original ${type.toUpperCase()}`, p2 = `New ${type.toUpperCase()}`;
-        const row = document.createElement('div');
-        row.className = 'grid grid-cols-[1fr_auto_1fr_auto] gap-2 items-center mb-2';
-
-        if (type === 'port') {
-            row.innerHTML = `
-                <input type="number" name="port_original" placeholder="${p1}" value="${val1}" class="w-full form-input p-2 text-sm">
-                <span class="text-cyan-400 font-bold text-xl">-></span>
-                <input type="number" name="port_new" placeholder="${p2}" class="w-full form-input p-2 text-sm">
-                <button type="button" class="remove-btn text-pink-500 hover:text-pink-400 font-bold text-2xl">&times;</button>
-            `;
-        } else {
-            row.innerHTML = `
-                <div class="flex w-full"><select data-asset-target="map" class="asset-select form-input p-2 w-1/3 text-sm"></select><input type="text" name="${type}_original" placeholder="${p1}" value="${val1}" class="w-2/3 form-input p-2 text-sm" data-validate="${type}"></div>
-                <span class="text-cyan-400 font-bold text-xl">-></span>
-                <div class="flex w-full"><select data-asset-target="map" class="asset-select form-input p-2 w-1/3 text-sm"></select><input type="text" name="${type}_new" placeholder="${p2}" class="w-2/3 form-input p-2 text-sm" data-validate="${type}"></div>
-                <button type="button" class="remove-btn text-pink-500 hover:text-pink-400 font-bold text-2xl">&times;</button>
-            `;
-        }
-        container.appendChild(row);
-        populateAllAssetSelects();
-        row.querySelector('.remove-btn').addEventListener('click', () => row.remove());
-        validateAllInputs();
-    }
-    document.querySelectorAll('button[data-action="add-map"]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const type = btn.dataset.type;
-            const container = document.getElementById(`${type}MappingsContainer`);
-            addMappingRow(container, type);
-        });
-    });
-
-    pcapFileInput.addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        analysisStatus.textContent = 'Analyzing PCAP...';
-        analysisStatus.classList.remove('hidden', 'text-red-500');
-
-        discoveredHostsTable.classList.add('hidden');
-        packetViewer.classList.add('hidden');
-        viewerPlaceholder.classList.remove('hidden');
-
-        discoveredHostsBody.innerHTML = '';
-        packetViewerBody.innerHTML = '';
-        packetDetails.innerHTML = '<div class="text-gray-500 italic">Select a packet to view details...</div>';
+        analysisStatus.classList.remove('hidden');
+        analysisStatus.textContent = '[ Analyzing PCAP... ]';
+        analyzeBtn.disabled = true;
 
         const formData = new FormData();
-        formData.append('pcapFile', file);
+        formData.append('pcapFile', pcapFile.files[0]);
 
         try {
-            const response = await fetch('/analyze_pcap', { method: 'POST', body: formData });
-            const data = await response.json();
+            const resp = await fetch('/analyze_pcap', { method: 'POST', body: formData });
+            const data = await resp.json();
 
-            if (response.ok) {
-                const adversary_ip = data.adversary;
-                data.hosts.forEach(host => {
-                    const row = document.createElement('tr');
-                    row.className = 'border-t border-cyan-900/50';
-
-                    let ipCell = `<td>${host.ip}</td>`;
-                    if (host.ip === adversary_ip) {
-                        ipCell = `<td>${host.ip} <span class="adversary-tag">// ADVERSARY?</span></td>`;
-                    }
-
-                    row.innerHTML = `
-                        ${ipCell}
-                        <td class="p-2">${host.mac}</td>
-                        <td class="p-2 text-center">
-                            <button type="button" data-ip="${host.ip}" data-mac="${host.mac}" class="add-host-btn">+</button>
-                        </td>
-                    `;
-                    discoveredHostsBody.appendChild(row);
-                });
-                discoveredHostsTable.classList.remove('hidden');
-
-                console.log("Packets:", data.packets.length);
-                console.log("Endpoints:", data.endpoints ? data.endpoints.length : 0);
-                console.log("Conversations:", data.conversations ? data.conversations.length : 0);
-
-                currentPackets = data.packets;
-                currentEndpoints = data.endpoints || [];
-                currentConversations = data.conversations || [];
-
-                renderPacketList(currentPackets);
-                renderEndpoints(currentEndpoints);
-                renderConversations(currentConversations);
-
-                // Reset to packet view
-                if (viewerModeSelect) {
-                    viewerModeSelect.value = 'packets';
-                    packetListView.classList.remove('hidden');
-                    endpointsView.classList.add('hidden');
-                    conversationsView.classList.add('hidden');
-                }
-
-                packetViewer.classList.remove('hidden');
-                viewerPlaceholder.classList.add('hidden');
-
-                analysisStatus.classList.add('hidden');
-
-            } else {
-                throw new Error(data.error);
+            if (data.error) {
+                analysisStatus.textContent = `Error: ${data.error}`;
+                analyzeBtn.disabled = false;
+                return;
             }
-        } catch (error) {
-            analysisStatus.textContent = `Error: ${error.message}`;
-            analysisStatus.classList.add('text-pink-500');
-            discoveredHostsBody.innerHTML = `<span class="text-pink-500">Error: ${error.message}</span>`;
+
+            analysisData = data;
+            analysisStatus.classList.add('hidden');
+            viewerControls.classList.remove('hidden');
+            packetCount.textContent = `${data.total_packets} packets | ${data.hosts.length} hosts | ${data.conversations.length} conversations`;
+
+            renderPackets(data.packets);
+            renderEndpoints(data.endpoints);
+            renderConversations(data.conversations);
+            renderFlowDiagram(data.conversations, data.endpoints);
+            populateRewriterHosts(data.hosts);
+
+            switchView('packets');
+
+            // Enable rewriter tab
+            document.getElementById('rewriterNoFile').classList.add('hidden');
+            document.getElementById('rewriterContent').classList.remove('hidden');
+
+        } catch (err) {
+            analysisStatus.textContent = `Error: ${err.message}`;
         }
+        analyzeBtn.disabled = false;
     });
 
-    // --- Packet Viewer Functions ---
-    const escapeHTML = str => (str ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // ═══════════════════════════════════════════════════════════════════
+    // PACKET TABLE
+    // ═══════════════════════════════════════════════════════════════════
 
-    function renderPacketList(packets) {
-        packetViewerBody.innerHTML = '';
-        packets.forEach((packet, index) => {
-            const row = document.createElement('tr');
-            row.className = 'border-t border-cyan-900/50 packet-row hover:bg-cyan-900/20 cursor-pointer';
-            row.dataset.index = index;
-            row.innerHTML = `
-                <td class="p-2">${packet.num}</td>
-                <td class="p-2">${escapeHTML(packet.src)}</td>
-                <td class="p-2">${escapeHTML(packet.dst)}</td>
-                <td class="p-2">${escapeHTML(packet.proto)}</td>
-                <td class="p-2">${escapeHTML(packet.info)}</td>
+    const packetBody = document.getElementById('packetBody');
+    const packetDetails = document.getElementById('packetDetails');
+
+    function protoClass(proto) {
+        const p = proto.toLowerCase();
+        if (p === 'tcp') return 'proto-tcp';
+        if (p === 'udp') return 'proto-udp';
+        if (p === 'icmp') return 'proto-icmp';
+        if (p === 'dns') return 'proto-dns';
+        return 'proto-other';
+    }
+
+    function renderPackets(packets) {
+        packetBody.innerHTML = '';
+        const frag = document.createDocumentFragment();
+
+        packets.forEach((pkt, idx) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${pkt.num}</td>
+                <td>${pkt.src}</td>
+                <td>${pkt.dst}</td>
+                <td class="${protoClass(pkt.proto)}">${pkt.proto}</td>
+                <td>${pkt.len}</td>
+                <td>${escHtml(pkt.info)}</td>
             `;
-            row.addEventListener('click', () => selectPacket(row, packet));
-            row.addEventListener('contextmenu', (e) => showContextMenu(e, packet));
-            packetViewerBody.appendChild(row);
-        });
-    }
-
-    function selectPacket(row, packet) {
-        document.querySelectorAll('.packet-row').forEach(r => {
-            r.classList.remove('selected');
-            r.classList.remove('bg-cyan-900/40');
-        });
-        row.classList.add('selected');
-        row.classList.add('bg-cyan-900/40');
-        selectedPacket = packet;
-        renderPacketDetails(packet);
-    }
-
-    function renderPacketDetails(packet) {
-        packetDetails.innerHTML = '';
-
-        if (!packet.layers || packet.layers.length === 0) {
-            packetDetails.innerHTML = '<div class="text-gray-500">No detailed info available.</div>';
-            return;
-        }
-
-        packet.layers.forEach(layer => {
-            const layerDiv = document.createElement('div');
-            layerDiv.className = 'mb-2';
-
-            const header = document.createElement('div');
-            header.className = 'detail-header text-cyan-400 font-bold cursor-pointer select-none';
-            header.textContent = `> ${layer.name}`;
-
-            const content = document.createElement('div');
-            content.className = 'detail-content ml-4 hidden'; // Hidden by default
-
-            for (const [key, value] of Object.entries(layer.fields)) {
-                const item = document.createElement('div');
-                item.className = 'detail-item text-xs font-mono';
-                item.innerHTML = `<span class="text-cyan-600">${key}:</span> <span class="text-gray-400 break-all">${value}</span>`;
-                content.appendChild(item);
-            }
-
-            header.addEventListener('click', () => {
-                content.classList.toggle('hidden');
-                header.textContent = content.classList.contains('hidden') ? `> ${layer.name}` : `v ${layer.name}`;
+            tr.addEventListener('click', () => {
+                packetBody.querySelectorAll('tr').forEach(r => r.classList.remove('selected'));
+                tr.classList.add('selected');
+                showPacketDetails(pkt);
             });
-
-            layerDiv.appendChild(header);
-            layerDiv.appendChild(content);
-            packetDetails.appendChild(layerDiv);
+            frag.appendChild(tr);
         });
+
+        packetBody.appendChild(frag);
     }
+
+    function showPacketDetails(pkt) {
+        let html = '';
+        pkt.layers.forEach(layer => {
+            html += `<div class="detail-layer">`;
+            html += `<div class="detail-layer-name">▸ ${layer.name}</div>`;
+            for (const [key, val] of Object.entries(layer.fields)) {
+                html += `<div class="detail-field"><span class="field-name">${key}:</span> <span class="field-value">${escHtml(String(val))}</span></div>`;
+            }
+            html += `</div>`;
+        });
+        packetDetails.innerHTML = html || '<span class="placeholder">No layer details available.</span>';
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // ENDPOINTS TABLE
+    // ═══════════════════════════════════════════════════════════════════
 
     function renderEndpoints(endpoints) {
-        endpointsBody.innerHTML = '';
+        const body = document.getElementById('endpointsBody');
+        body.innerHTML = '';
         endpoints.forEach(ep => {
-            const row = document.createElement('tr');
-            row.className = 'border-t border-cyan-900/50 hover:bg-cyan-900/20 cursor-pointer';
-            row.innerHTML = `
-                <td class="p-2">${ep.ip}</td>
-                <td class="p-2">${ep.tx_pkts}</td>
-                <td class="p-2">${ep.rx_pkts}</td>
-                <td class="p-2">${ep.tx_bytes}</td>
-                <td class="p-2">${ep.rx_bytes}</td>
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${ep.ip}</td>
+                <td>${ep.mac}</td>
+                <td>${ep.tx_pkts}</td>
+                <td>${ep.rx_pkts}</td>
+                <td>${formatBytes(ep.tx_bytes)}</td>
+                <td>${formatBytes(ep.rx_bytes)}</td>
+                <td>${ep.protocols.map(p => `<span class="${protoClass(p)}">${p}</span>`).join(' ')}</td>
             `;
-            // Reuse context menu for quick rewriting
-            row.addEventListener('contextmenu', (e) => showContextMenu(e, { src: ep.ip, dst: ep.ip }));
-            endpointsBody.appendChild(row);
+            body.appendChild(tr);
         });
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // CONVERSATIONS TABLE
+    // ═══════════════════════════════════════════════════════════════════
 
     function renderConversations(conversations) {
-        conversationsBody.innerHTML = '';
+        const body = document.getElementById('conversationsBody');
+        body.innerHTML = '';
         conversations.forEach(conv => {
-            const row = document.createElement('tr');
-            row.className = 'border-t border-cyan-900/50 hover:bg-cyan-900/20 cursor-pointer';
-            row.innerHTML = `
-                <td class="p-2">${conv.ip_a}</td>
-                <td class="p-2">${conv.ip_b}</td>
-                <td class="p-2">${conv.pkts}</td>
-                <td class="p-2">${conv.bytes}</td>
-                <td class="p-2">${conv.duration.toFixed(4)}</td>
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${conv.addr_a}</td>
+                <td>${conv.addr_b}</td>
+                <td>${conv.pkts}</td>
+                <td>${formatBytes(conv.bytes)}</td>
+                <td>${conv.protocols.map(p => `<span class="${protoClass(p)}">${p}</span>`).join(' ')}</td>
+                <td>${conv.duration}s</td>
             `;
-            row.addEventListener('contextmenu', (e) => showContextMenu(e, { src: conv.ip_a, dst: conv.ip_b }));
-            conversationsBody.appendChild(row);
+            body.appendChild(tr);
         });
     }
 
-    // Export/Import Handlers
-    if (exportConfigBtn) {
-        exportConfigBtn.addEventListener('click', async () => {
-            try {
-                const response = await fetch('/api/config/export', { method: 'POST' });
-                if (!response.ok) throw new Error('Export failed');
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'netrunner_backup.json';
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                a.remove();
-            } catch (error) {
-                alert('Export failed: ' + error.message);
-            }
+    // ═══════════════════════════════════════════════════════════════════
+    // TRAFFIC FLOW DIAGRAM (SVG)
+    // ═══════════════════════════════════════════════════════════════════
+
+    function renderFlowDiagram(conversations, endpoints) {
+        const svg = document.getElementById('flowSvg');
+        svg.innerHTML = '';
+
+        if (!conversations.length || !endpoints.length) {
+            svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#808080" font-size="14">No conversation data to visualize.</text>';
+            return;
+        }
+
+        // Get unique IPs sorted by total traffic
+        const ipSet = new Set();
+        conversations.forEach(c => { ipSet.add(c.addr_a); ipSet.add(c.addr_b); });
+        const ips = Array.from(ipSet);
+
+        // Sort by total bytes
+        const ipStats = {};
+        endpoints.forEach(ep => {
+            ipStats[ep.ip] = (ep.tx_bytes || 0) + (ep.rx_bytes || 0);
+        });
+        ips.sort((a, b) => (ipStats[b] || 0) - (ipStats[a] || 0));
+
+        // Limit to top 15 endpoints
+        const displayIps = ips.slice(0, 15);
+
+        const colWidth = Math.max(120, Math.min(180, 1200 / displayIps.length));
+        const svgWidth = Math.max(800, displayIps.length * colWidth + 100);
+        const headerY = 50;
+        const lineStartY = 80;
+
+        // Calculate max packets for line thickness scaling
+        const maxPkts = Math.max(...conversations.map(c => c.pkts), 1);
+
+        // Position endpoints
+        const ipPositions = {};
+        displayIps.forEach((ip, i) => {
+            ipPositions[ip] = 50 + i * colWidth + colWidth / 2;
+        });
+
+        let html = '';
+
+        // Draw endpoint columns
+        displayIps.forEach(ip => {
+            const x = ipPositions[ip];
+            const totalBytes = ipStats[ip] || 0;
+
+            // Vertical line
+            html += `<line x1="${x}" y1="${lineStartY}" x2="${x}" y2="900" stroke="#1a1a2a" stroke-width="1" stroke-dasharray="4,4"/>`;
+
+            // IP label
+            html += `<text x="${x}" y="${headerY - 15}" text-anchor="middle" fill="#00f3ff" font-size="11" font-weight="bold">${ip}</text>`;
+
+            // Bytes label
+            html += `<text x="${x}" y="${headerY}" text-anchor="middle" fill="#808080" font-size="9">${formatBytes(totalBytes)}</text>`;
+
+            // Endpoint dot
+            html += `<circle cx="${x}" cy="${lineStartY}" r="5" fill="#00f3ff" opacity="0.8"/>`;
+        });
+
+        // Draw conversation lines
+        let lineY = lineStartY + 30;
+        const lineSpacing = 40;
+
+        // Sort conversations by packets (descending)
+        const sortedConvs = [...conversations]
+            .filter(c => ipPositions[c.addr_a] !== undefined && ipPositions[c.addr_b] !== undefined)
+            .sort((a, b) => b.pkts - a.pkts)
+            .slice(0, 20);
+
+        sortedConvs.forEach(conv => {
+            const x1 = ipPositions[conv.addr_a];
+            const x2 = ipPositions[conv.addr_b];
+            if (x1 === undefined || x2 === undefined) return;
+
+            const thickness = Math.max(1, Math.min(6, (conv.pkts / maxPkts) * 6));
+
+            // Color by primary protocol
+            let color = '#ffcc00'; // default
+            if (conv.protocols.includes('TCP')) color = '#00f3ff';
+            else if (conv.protocols.includes('UDP')) color = '#bc13fe';
+            else if (conv.protocols.includes('ICMP')) color = '#ff00ff';
+
+            // Arrow line
+            const midX = (x1 + x2) / 2;
+            html += `<line x1="${x1}" y1="${lineY}" x2="${x2}" y2="${lineY}" stroke="${color}" stroke-width="${thickness}" opacity="0.7"/>`;
+
+            // Arrowhead
+            const arrowDir = x2 > x1 ? -1 : 1;
+            html += `<polygon points="${x2},${lineY} ${x2 + arrowDir * 8},${lineY - 4} ${x2 + arrowDir * 8},${lineY + 4}" fill="${color}" opacity="0.8"/>`;
+
+            // Label
+            const label = `${conv.protocols.join('/')} ${conv.pkts}pkts`;
+            html += `<text x="${midX}" y="${lineY - 6}" text-anchor="middle" fill="${color}" font-size="9" opacity="0.9">${label}</text>`;
+
+            lineY += lineSpacing;
+        });
+
+        const svgHeight = Math.max(500, lineY + 50);
+        svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
+        svg.style.minHeight = `${Math.min(svgHeight, 800)}px`;
+        svg.innerHTML = html;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // REWRITER
+    // ═══════════════════════════════════════════════════════════════════
+
+    const rewriteHostsBody = document.getElementById('rewriteHostsBody');
+
+    function populateRewriterHosts(hosts) {
+        rewriteHostsBody.innerHTML = '';
+        hosts.forEach(h => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${h.ip}</td>
+                <td style="color: var(--text-dim)">${h.mac}</td>
+                <td><input type="text" class="rewrite-input label-input" placeholder="Label..." data-host-ip="${h.ip}" data-field="label"></td>
+                <td class="rewrite-arrow">→</td>
+                <td><input type="text" class="rewrite-input" placeholder="New IP" data-host-ip="${h.ip}" data-orig-ip="${h.ip}" data-field="new_ip"></td>
+                <td><input type="text" class="rewrite-input" placeholder="New MAC" data-host-mac="${h.mac}" data-orig-mac="${h.mac}" data-field="new_mac"></td>
+            `;
+            rewriteHostsBody.appendChild(tr);
         });
     }
 
-    if (importConfigBtn && importFile) {
-        importConfigBtn.addEventListener('click', () => importFile.click());
-        importFile.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
+    function getRewriteMaps() {
+        const ipMap = {};
+        const macMap = {};
+        const labels = {};
 
-            const formData = new FormData();
-            formData.append('configFile', file);
-
-            try {
-                const response = await fetch('/api/config/import', { method: 'POST', body: formData });
-                const result = await response.json();
-                if (response.ok) {
-                    alert(result.message);
-                    fetchAssets();
-                    fetchConfigs();
-                } else {
-                    throw new Error(result.error);
+        rewriteHostsBody.querySelectorAll('tr').forEach(tr => {
+            const inputs = tr.querySelectorAll('.rewrite-input');
+            inputs.forEach(inp => {
+                const val = inp.value.trim();
+                if (!val) return;
+                if (inp.dataset.field === 'new_ip' && inp.dataset.origIp) {
+                    ipMap[inp.dataset.origIp] = val;
                 }
-            } catch (error) {
-                alert('Import failed: ' + error.message);
-            }
-            importFile.value = '';
+                if (inp.dataset.field === 'new_mac' && inp.dataset.origMac) {
+                    macMap[inp.dataset.origMac] = val;
+                }
+                if (inp.dataset.field === 'label' && inp.dataset.hostIp) {
+                    labels[inp.dataset.hostIp] = val;
+                }
+            });
         });
+
+        return { ipMap, macMap, labels };
     }
 
-    // --- Context Menu ---
-    const contextMenu = document.getElementById('contextMenu');
-    let contextMenuPacket = null;
+    // ═══════════════════════════════════════════════════════════════════
+    // DOWNLOAD REWRITTEN PCAP
+    // ═══════════════════════════════════════════════════════════════════
 
-    function showContextMenu(e, packet) {
-        e.preventDefault();
-        contextMenuPacket = packet;
-        contextMenu.style.top = `${e.pageY}px`;
-        contextMenu.style.left = `${e.pageX}px`;
-        contextMenu.style.display = 'block';
-    }
+    document.getElementById('downloadRewrittenBtn').addEventListener('click', async () => {
+        const maps = getRewriteMaps();
+        const ttl = document.getElementById('replayTtl').value;
+        const vlan = document.getElementById('replayVlan').value;
 
-    document.addEventListener('click', (e) => {
-        if (!contextMenu.contains(e.target)) {
-            contextMenu.style.display = 'none';
-        }
-    });
-
-    document.getElementById('ctxRewriteSrcIp').addEventListener('click', () => {
-        if (contextMenuPacket) {
-            addMappingRow(document.getElementById('ipMappingsContainer'), 'ip', contextMenuPacket.src);
-            switchTab('replayer');
-        }
-        contextMenu.style.display = 'none';
-    });
-    document.getElementById('ctxRewriteDstIp').addEventListener('click', () => {
-        if (contextMenuPacket) {
-            addMappingRow(document.getElementById('ipMappingsContainer'), 'ip', contextMenuPacket.dst);
-            switchTab('replayer');
-        }
-        contextMenu.style.display = 'none';
-    });
-    // Add other context menu handlers if needed
-
-
-    document.body.addEventListener('click', (e) => {
-        if (e.target.classList.contains('add-host-btn')) {
-            const ip = e.target.dataset.ip;
-            const mac = e.target.dataset.mac;
-
-            if (ip && ip !== 'N/A') {
-                addMappingRow(document.getElementById('ipMappingsContainer'), 'ip', ip);
-            }
-            if (mac && mac !== 'N/A') {
-                addMappingRow(document.getElementById('macMappingsContainer'), 'mac', mac);
-            }
-        }
-    });
-
-    const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-    const macRegex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
-
-    function validateInput(input) {
-        const type = input.dataset.validate;
-        if (!type) return;
-
-        const regex = type === 'ip' ? ipRegex : macRegex;
-        if (!input.value && !input.required) {
-            input.classList.remove('invalid');
-            return;
-        }
-
-        if (regex.test(input.value)) {
-            input.classList.remove('invalid');
-        } else {
-            input.classList.add('invalid');
-        }
-    }
-
-    function validateAllInputs() {
-        document.querySelectorAll('input[data-validate]').forEach(validateInput);
-    }
-
-    document.body.addEventListener('input', e => {
-        if (e.target.matches('input[data-validate]')) {
-            validateInput(e.target);
-        }
-    });
-
-
-    const protocolSelect = document.getElementById('protocol'), portFields = generatorPane.querySelector('.port-fields');
-    function togglePortFields() { portFields.style.display = (protocolSelect.value === 'tcp' || protocolSelect.value === 'udp') ? 'grid' : 'none'; }
-    protocolSelect.addEventListener('change', togglePortFields);
-
-    const loopCheckbox = document.getElementById('loopReplayCheckbox');
-    const loopCountContainer = document.getElementById('loopCountContainer');
-    loopCheckbox.addEventListener('change', () => {
-        loopCountContainer.classList.toggle('hidden', !loopCheckbox.checked);
-    });
-
-    function initChart() {
-        const ctx = document.getElementById('trafficChart').getContext('2d');
-        if (trafficChart) trafficChart.destroy();
-        trafficChart = new Chart(ctx, {
-            type: 'line',
-            data: { labels: [], datasets: [{ label: 'Packets/sec', data: [], borderColor: '#0AF8F8', backgroundColor: '#0AF8F822', borderWidth: 1, tension: 0.4, fill: true, pointRadius: 0 }] },
-            options: { scales: { y: { beginAtZero: true, grid: { color: '#0AF8F822' }, ticks: { color: '#008a8a' } }, x: { grid: { color: '#0AF8F822' }, ticks: { color: '#008a8a' } } }, plugins: { legend: { display: false } } }
-        });
-    }
-
-    toggleConsoleBtn.addEventListener('click', () => {
-        const isHidden = consoleWrapper.classList.toggle('hidden');
-        consoleArrow.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
-    });
-
-    async function handleFormSubmit(e, form, endpoint, type) {
-        e.preventDefault();
-        validateAllInputs();
-        if (form.querySelector('.invalid')) {
-            alert('Please fix invalid fields (highlighted in red) before starting.');
-            return;
-        }
-
-        const submitBtn = form.querySelector('button[type="submit"]');
-        submitBtn.disabled = true; stopBtn.disabled = false;
-        submitBtn.textContent = 'Executing...';
-        statusContainer.classList.remove('hidden');
-        progressBar.style.width = '0%';
-        statusMessage.classList.remove('text-red-400');
-        consoleOutput.textContent = ''; chartTime = 0;
-        initChart();
-        statusTitle.textContent = `${type} Status`;
-        trafficChart.data.datasets[0].label = `${type}d Packets/sec`;
         try {
-            const response = await fetch(endpoint, { method: 'POST', body: new FormData(form) });
-            const result = await response.json();
-            if (response.ok) { statusMessage.textContent = result.message; startStatusPolling(); }
-            else { throw new Error(result.error || 'Unknown error.'); }
-        } catch (error) {
-            statusMessage.textContent = `Error: ${error.message}`;
-            statusMessage.classList.add('text-pink-500');
-            submitBtn.disabled = false; stopBtn.disabled = true;
-            submitBtn.textContent = `Start ${type}`;
-        }
-    }
-    replayerForm.addEventListener('submit', (e) => handleFormSubmit(e, replayerForm, '/replay', 'Replay'));
-    generatorForm.addEventListener('submit', (e) => handleFormSubmit(e, generatorForm, '/generate', 'Generation'));
+            const resp = await fetch('/rewrite_pcap', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    filepath: analysisData?.filepath,
+                    ip_map: maps.ipMap,
+                    mac_map: maps.macMap,
+                    ttl: ttl || null,
+                    vlan_id: vlan || null
+                })
+            });
 
-    stopBtn.addEventListener('click', async () => {
-        stopBtn.disabled = true; stopBtn.textContent = 'Aborting...';
-        try { await fetch('/stop', { method: 'POST' }); }
-        catch (error) { statusMessage.textContent = 'Error sending stop signal.'; }
+            if (!resp.ok) {
+                const err = await resp.json();
+                alert(`Error: ${err.error}`);
+                return;
+            }
+
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `rewritten_${pcapFile.files[0]?.name || 'capture.pcap'}`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+        } catch (err) {
+            alert(`Error: ${err.message}`);
+        }
     });
 
-    function startStatusPolling() {
-        if (statusInterval) clearInterval(statusInterval);
-        statusInterval = setInterval(async () => {
+    // ═══════════════════════════════════════════════════════════════════
+    // REPLAY CONTROLS
+    // ═══════════════════════════════════════════════════════════════════
+
+    const startReplayBtn = document.getElementById('startReplayBtn');
+    const stopReplayBtn = document.getElementById('stopReplayBtn');
+    const replayStatus = document.getElementById('replayStatus');
+    const replayProgress = document.getElementById('replayProgress');
+    const replayMessage = document.getElementById('replayMessage');
+    const replayPps = document.getElementById('replayPps');
+    const replayLog = document.getElementById('replayLog');
+    const loopCheckbox = document.getElementById('replayLoop');
+    const loopCountInput = document.getElementById('replayLoopCount');
+
+    loopCheckbox.addEventListener('change', () => {
+        loopCountInput.classList.toggle('hidden', !loopCheckbox.checked);
+    });
+
+    document.getElementById('toggleLogBtn').addEventListener('click', () => {
+        replayLog.classList.toggle('hidden');
+    });
+
+    startReplayBtn.addEventListener('click', async () => {
+        const maps = getRewriteMaps();
+        const iface = document.getElementById('replayInterface').value.trim();
+        if (!iface) { alert('Please enter an egress interface.'); return; }
+
+        try {
+            const resp = await fetch('/replay/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    filepath: analysisData?.filepath,
+                    interface: iface,
+                    speed: document.getElementById('replaySpeed').value,
+                    loop: loopCheckbox.checked,
+                    loop_count: parseInt(loopCountInput.value) || 0,
+                    ttl: document.getElementById('replayTtl').value || null,
+                    vlan_id: document.getElementById('replayVlan').value || null,
+                    ip_map: maps.ipMap,
+                    mac_map: maps.macMap
+                })
+            });
+
+            const data = await resp.json();
+            if (data.error) { alert(data.error); return; }
+
+            // Show status
+            replayStatus.classList.remove('hidden');
+            startReplayBtn.classList.add('hidden');
+            stopReplayBtn.classList.remove('hidden');
+
+            // Start SSE
+            startReplaySSE();
+
+        } catch (err) {
+            alert(`Error: ${err.message}`);
+        }
+    });
+
+    stopReplayBtn.addEventListener('click', async () => {
+        await fetch('/replay/stop', { method: 'POST' });
+    });
+
+    function startReplaySSE() {
+        if (statusEventSource) statusEventSource.close();
+        statusEventSource = new EventSource('/replay/status');
+
+        statusEventSource.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+
+            replayMessage.textContent = data.message;
+            replayPps.textContent = `${data.pps} pps`;
+
+            if (data.total > 0) {
+                const pct = Math.round((data.progress / data.total) * 100);
+                replayProgress.style.width = `${pct}%`;
+            }
+
+            // Update log
+            replayLog.innerHTML = data.logs.map(l => `<div class="log-line">${escHtml(l)}</div>`).join('');
+            replayLog.scrollTop = replayLog.scrollHeight;
+
+            if (!data.is_running) {
+                statusEventSource.close();
+                statusEventSource = null;
+                startReplayBtn.classList.remove('hidden');
+                stopReplayBtn.classList.add('hidden');
+            }
+        };
+
+        statusEventSource.onerror = () => {
+            statusEventSource.close();
+            statusEventSource = null;
+            startReplayBtn.classList.remove('hidden');
+            stopReplayBtn.classList.add('hidden');
+        };
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TRAFFIC GENERATOR
+    // ═══════════════════════════════════════════════════════════════════
+
+    const genStatus = document.getElementById('genStatus');
+    const genProgress = document.getElementById('genProgress');
+    const genMessage = document.getElementById('genMessage');
+    const genPps = document.getElementById('genPps');
+
+    document.querySelectorAll('.gen-run-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const card = btn.closest('.gen-card');
+            const type = card.dataset.type;
+            const isAdversary = type === 'adversary';
+            const protoOrSim = isAdversary ? card.dataset.sim : card.dataset.proto;
+
+            // Gather common settings
+            const payload = {
+                src_ip: document.getElementById('genSrcIp').value,
+                dst_ip: document.getElementById('genDstIp').value,
+                interface: document.getElementById('genInterface').value,
+                c2_host: document.getElementById('genC2Host').value,
+            };
+
+            // Gather card-specific settings
+            card.querySelectorAll('[data-field]').forEach(inp => {
+                payload[inp.dataset.field] = inp.value;
+            });
+
+            if (isAdversary) {
+                payload.simulation = protoOrSim;
+            } else {
+                payload.protocol = protoOrSim;
+            }
+
+            const url = isAdversary ? '/generate/adversary' : '/generate/protocol';
+
             try {
-                const response = await fetch('/status');
-                const status = await response.json();
-                statusMessage.textContent = status.message;
-                progressBar.style.width = `${(status.total > 0) ? (status.progress / status.total) * 100 : 0}%`;
-                if (trafficChart.data.labels.length > 30) {
-                    trafficChart.data.labels.shift();
-                    trafficChart.data.datasets[0].data.shift();
-                }
-                trafficChart.data.labels.push(chartTime++);
-                trafficChart.data.datasets[0].data.push(status.packets_per_second);
-                trafficChart.update('quiet');
-                consoleOutput.textContent = status.logs.join('\\n');
-                consoleOutput.scrollTop = consoleOutput.scrollHeight;
-                if (status.error) { statusMessage.classList.add('text-pink-500'); progressBar.classList.add('bg-pink-500'); stopStatusPolling(); }
-                if (!status.is_running) stopStatusPolling();
-            } catch (error) { statusMessage.textContent = 'Connection to backend lost.'; statusMessage.classList.add('text-pink-500'); stopStatusPolling(); }
-        }, 1000);
+                const resp = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await resp.json();
+                if (data.error) { alert(data.error); return; }
+
+                genStatus.classList.remove('hidden');
+                startGenSSE();
+
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+            }
+        });
+    });
+
+    document.getElementById('genStopBtn').addEventListener('click', async () => {
+        await fetch('/replay/stop', { method: 'POST' }); // Reuses same stop endpoint
+    });
+
+    function startGenSSE() {
+        if (statusEventSource) statusEventSource.close();
+        statusEventSource = new EventSource('/replay/status');
+
+        statusEventSource.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+
+            genMessage.textContent = data.message;
+            genPps.textContent = `${data.pps} pps`;
+
+            if (data.total > 0) {
+                const pct = Math.round((data.progress / data.total) * 100);
+                genProgress.style.width = `${pct}%`;
+            }
+
+            if (!data.is_running) {
+                statusEventSource.close();
+                statusEventSource = null;
+            }
+        };
+
+        statusEventSource.onerror = () => {
+            statusEventSource.close();
+            statusEventSource = null;
+        };
     }
 
-    function stopStatusPolling() {
-        clearInterval(statusInterval); statusInterval = null;
-        replayerForm.querySelector('button[type="submit"]').disabled = false;
-        generatorForm.querySelector('button[type="submit"]').disabled = false;
-        replayerForm.querySelector('button[type="submit"]').textContent = 'Initiate Replay';
-        generatorForm.querySelector('button[type="submit"]').textContent = 'Generate Traffic';
-        stopBtn.disabled = true; stopBtn.textContent = 'Abort';
+    // ═══════════════════════════════════════════════════════════════════
+    // PROFILES
+    // ═══════════════════════════════════════════════════════════════════
+
+    const profileList = document.getElementById('profileList');
+    const profileName = document.getElementById('profileName');
+
+    async function loadProfiles() {
+        try {
+            const resp = await fetch('/profiles');
+            const profiles = await resp.json();
+
+            if (!profiles.length) {
+                profileList.innerHTML = '<div class="placeholder">No saved profiles yet.</div>';
+                return;
+            }
+
+            profileList.innerHTML = '';
+            profiles.forEach(p => {
+                const div = document.createElement('div');
+                div.className = 'profile-item';
+                div.innerHTML = `
+                    <div>
+                        <div class="profile-name">${escHtml(p.name)}</div>
+                        <div class="profile-meta">${p.rules_count} rules · ${p.labels_count} labels · ${p.modified?.split('T')[0] || ''}</div>
+                    </div>
+                    <div class="profile-actions">
+                        <button class="btn btn-sm btn-ghost profile-load-btn" data-id="${p.id}">Load</button>
+                        <button class="btn btn-sm btn-ghost profile-export-btn" data-id="${p.id}">Export</button>
+                        <button class="btn btn-sm btn-danger profile-delete-btn" data-id="${p.id}">✕</button>
+                    </div>
+                `;
+                profileList.appendChild(div);
+            });
+
+            // Wire up buttons
+            profileList.querySelectorAll('.profile-load-btn').forEach(btn => {
+                btn.addEventListener('click', () => loadProfile(btn.dataset.id));
+            });
+            profileList.querySelectorAll('.profile-export-btn').forEach(btn => {
+                btn.addEventListener('click', () => exportProfile(btn.dataset.id));
+            });
+            profileList.querySelectorAll('.profile-delete-btn').forEach(btn => {
+                btn.addEventListener('click', () => deleteProfile(btn.dataset.id));
+            });
+
+        } catch (err) {
+            console.error('Failed to load profiles:', err);
+        }
     }
 
-    initChart();
-    switchTab('replayer');
-    togglePortFields();
-    fetchAssets();
-    fetchConfigs();
-    validateAllInputs();
+    document.getElementById('saveProfileBtn').addEventListener('click', async () => {
+        const name = profileName.value.trim();
+        if (!name) { alert('Please enter a profile name.'); return; }
+
+        const maps = getRewriteMaps();
+        const profile = {
+            name: name,
+            labels: maps.labels,
+            rewrite_rules: {
+                ip_map: maps.ipMap,
+                mac_map: maps.macMap,
+                port_map: {}
+            },
+            replay_settings: {
+                interface: document.getElementById('replayInterface').value,
+                speed: document.getElementById('replaySpeed').value,
+                loop: loopCheckbox.checked,
+                loop_count: parseInt(loopCountInput.value) || 0,
+                ttl: document.getElementById('replayTtl').value || null,
+                vlan_id: document.getElementById('replayVlan').value || null
+            },
+            generator_presets: {
+                src_ip: document.getElementById('genSrcIp').value,
+                dst_ip: document.getElementById('genDstIp').value,
+                interface: document.getElementById('genInterface').value,
+                c2_host: document.getElementById('genC2Host').value,
+            }
+        };
+
+        try {
+            await fetch('/profiles', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(profile)
+            });
+            loadProfiles();
+            profileName.value = '';
+        } catch (err) {
+            alert(`Error: ${err.message}`);
+        }
+    });
+
+    async function loadProfile(id) {
+        try {
+            const resp = await fetch(`/profiles/${id}`);
+            const profile = await resp.json();
+
+            // Apply rewrite rules
+            if (profile.rewrite_rules) {
+                const ipMap = profile.rewrite_rules.ip_map || {};
+                const macMap = profile.rewrite_rules.mac_map || {};
+                rewriteHostsBody.querySelectorAll('tr').forEach(tr => {
+                    const inputs = tr.querySelectorAll('.rewrite-input');
+                    inputs.forEach(inp => {
+                        if (inp.dataset.field === 'new_ip' && ipMap[inp.dataset.origIp]) {
+                            inp.value = ipMap[inp.dataset.origIp];
+                        }
+                        if (inp.dataset.field === 'new_mac' && macMap[inp.dataset.origMac]) {
+                            inp.value = macMap[inp.dataset.origMac];
+                        }
+                    });
+                });
+            }
+
+            // Apply labels
+            if (profile.labels) {
+                rewriteHostsBody.querySelectorAll('.label-input').forEach(inp => {
+                    if (profile.labels[inp.dataset.hostIp]) {
+                        inp.value = profile.labels[inp.dataset.hostIp];
+                    }
+                });
+            }
+
+            // Apply replay settings
+            if (profile.replay_settings) {
+                const rs = profile.replay_settings;
+                if (rs.interface) document.getElementById('replayInterface').value = rs.interface;
+                if (rs.speed) document.getElementById('replaySpeed').value = rs.speed;
+                loopCheckbox.checked = rs.loop || false;
+                loopCountInput.classList.toggle('hidden', !rs.loop);
+                if (rs.loop_count) loopCountInput.value = rs.loop_count;
+                if (rs.ttl) document.getElementById('replayTtl').value = rs.ttl;
+                if (rs.vlan_id) document.getElementById('replayVlan').value = rs.vlan_id;
+            }
+
+            // Apply generator presets
+            if (profile.generator_presets) {
+                const gp = profile.generator_presets;
+                if (gp.src_ip) document.getElementById('genSrcIp').value = gp.src_ip;
+                if (gp.dst_ip) document.getElementById('genDstIp').value = gp.dst_ip;
+                if (gp.interface) document.getElementById('genInterface').value = gp.interface;
+                if (gp.c2_host) document.getElementById('genC2Host').value = gp.c2_host;
+            }
+
+            alert(`Profile "${profile.name}" loaded.`);
+            switchTab('rewriter');
+
+        } catch (err) {
+            alert(`Error loading profile: ${err.message}`);
+        }
+    }
+
+    async function exportProfile(id) {
+        try {
+            const resp = await fetch(`/profiles/export/${id}`);
+            const profile = await resp.json();
+            const blob = new Blob([JSON.stringify(profile, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${profile.name.replace(/\s+/g, '_')}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            alert(`Error: ${err.message}`);
+        }
+    }
+
+    async function deleteProfile(id) {
+        if (!confirm('Delete this profile?')) return;
+        try {
+            await fetch(`/profiles/${id}`, { method: 'DELETE' });
+            loadProfiles();
+        } catch (err) {
+            alert(`Error: ${err.message}`);
+        }
+    }
+
+    // Import
+    const importProfileBtn = document.getElementById('importProfileBtn');
+    const importProfileFile = document.getElementById('importProfileFile');
+
+    importProfileBtn.addEventListener('click', () => importProfileFile.click());
+    importProfileFile.addEventListener('change', async () => {
+        if (!importProfileFile.files.length) return;
+        try {
+            const text = await importProfileFile.files[0].text();
+            const data = JSON.parse(text);
+            await fetch('/profiles/import', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            loadProfiles();
+            importProfileFile.value = '';
+        } catch (err) {
+            alert(`Error importing: ${err.message}`);
+        }
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // UTILITIES
+    // ═══════════════════════════════════════════════════════════════════
+
+    function escHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // INIT
+    // ═══════════════════════════════════════════════════════════════════
+
+    loadProfiles();
+
 });

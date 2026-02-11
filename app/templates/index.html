@@ -5,410 +5,466 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NetRunner OS</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <meta name="description" content="Network traffic simulation, PCAP replay, and analysis for NDR testing.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 
-<body class="text-gray-300 flex items-center justify-center min-h-screen py-12">
-    <div class="w-full max-w-7xl mx-auto p-4">
-        <div class="cp-container p-6 md:p-8">
-            <div class="text-center mb-8">
-                <h1 class="cp-header text-4xl font-bold text-cyan-400">
-                    NetRunner OS
-                </h1>
-                <p class="text-cyan-700 mt-2">// Network Simulation Interface //</p>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <h1 class="logo">NetRunner OS</h1>
+            <p class="tagline">// Network Simulation Interface //</p>
+        </header>
+
+        <!-- Tab Navigation -->
+        <nav class="tab-nav">
+            <button class="tab active" data-tab="viewer" id="tab-viewer">
+                <span class="tab-icon">◉</span> PCAP Viewer
+            </button>
+            <button class="tab" data-tab="rewriter" id="tab-rewriter">
+                <span class="tab-icon">⇄</span> Rewriter & Replay
+            </button>
+            <button class="tab" data-tab="generator" id="tab-generator">
+                <span class="tab-icon">⚡</span> Traffic Generator
+            </button>
+            <button class="tab" data-tab="profiles" id="tab-profiles">
+                <span class="tab-icon">◧</span> Profiles
+            </button>
+        </nav>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- TAB 1: PCAP VIEWER                                            -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <div id="pane-viewer" class="tab-pane active">
+            <!-- Upload Bar -->
+            <div class="upload-bar">
+                <div class="upload-group">
+                    <label for="pcapFile" class="upload-label">// SELECT PCAP FILE</label>
+                    <input type="file" id="pcapFile" accept=".pcap,.pcapng,.cap" class="file-input">
+                </div>
+                <button id="analyzeBtn" class="btn btn-primary" disabled>Analyze</button>
+                <div id="analysisStatus" class="status-text hidden"></div>
             </div>
 
-            <!-- Asset Manager -->
-            <div class="mb-8">
-                <h2 class="section-header mb-4">Asset Manager</h2>
-                <div class="bg-black/50 p-4 border border-cyan-900/50">
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                        <div class="md:col-span-1">
-                            <label for="assetName" class="block text-xs font-semibold text-cyan-300 mb-1">// Asset
-                                Name</label>
-                            <input type="text" id="assetName" placeholder="e.g., Test Server 1"
-                                class="w-full form-input p-2 text-sm">
-                        </div>
-                        <div class="md:col-span-1">
-                            <label for="assetIp" class="block text-xs font-semibold text-cyan-300 mb-1">// Asset
-                                IP</label>
-                            <input type="text" id="assetIp" placeholder="192.168.1.100"
-                                class="w-full form-input p-2 text-sm" data-validate="ip">
-                        </div>
-                        <div class="md:col-span-1">
-                            <label for="assetMac" class="block text-xs font-semibold text-cyan-300 mb-1">// Asset
-                                MAC</label>
-                            <input type="text" id="assetMac" placeholder="aa:bb:cc:dd:ee:ff"
-                                class="w-full form-input p-2 text-sm" data-validate="mac">
-                        </div>
-                        <div class="md:col-span-1">
-                            <button id="addAssetBtn" class="w-full cp-button py-2 text-sm">Add Asset</button>
+            <!-- View Mode Switcher -->
+            <div id="viewerControls" class="viewer-controls hidden">
+                <div class="view-mode-group">
+                    <button class="view-mode-btn active" data-view="packets">Packets</button>
+                    <button class="view-mode-btn" data-view="flow">Traffic Flow</button>
+                    <button class="view-mode-btn" data-view="endpoints">Endpoints</button>
+                    <button class="view-mode-btn" data-view="conversations">Conversations</button>
+                </div>
+                <div class="packet-count" id="packetCount"></div>
+            </div>
+
+            <!-- Packets View -->
+            <div id="view-packets" class="view-panel hidden">
+                <div class="split-pane">
+                    <div class="packet-list-pane" id="packetListPane">
+                        <table class="data-table" id="packetTable">
+                            <thead>
+                                <tr>
+                                    <th class="col-num">No.</th>
+                                    <th class="col-src">Source</th>
+                                    <th class="col-dst">Destination</th>
+                                    <th class="col-proto">Protocol</th>
+                                    <th class="col-len">Length</th>
+                                    <th class="col-info">Info</th>
+                                </tr>
+                            </thead>
+                            <tbody id="packetBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="packet-detail-pane" id="packetDetailPane">
+                        <h3 class="detail-title">Packet Details</h3>
+                        <div id="packetDetails" class="detail-content">
+                            <span class="placeholder">Select a packet to inspect...</span>
                         </div>
                     </div>
-                    <div id="assetList" class="mt-4 max-h-24 overflow-y-auto"></div>
                 </div>
             </div>
 
-            <div class="border-b border-cyan-900/50 mb-8 flex justify-between items-center">
-                <nav class="flex">
-                    <button id="tab-replayer" class="tab active">// PCAP Replayer</button>
-                    <button id="tab-generator" class="tab">// Traffic Generator</button>
-                    <button id="tab-viewer" class="tab">// Packet Viewer</button>
-                </nav>
+            <!-- Traffic Flow View -->
+            <div id="view-flow" class="view-panel hidden">
+                <div class="flow-container" id="flowContainer">
+                    <svg id="flowSvg" class="flow-svg"></svg>
+                </div>
+                <div class="flow-legend">
+                    <span class="legend-item"><span class="legend-dot" style="background:#00f3ff"></span> TCP</span>
+                    <span class="legend-item"><span class="legend-dot" style="background:#bc13fe"></span> UDP</span>
+                    <span class="legend-item"><span class="legend-dot" style="background:#ff00ff"></span> ICMP</span>
+                    <span class="legend-item"><span class="legend-dot" style="background:#ffcc00"></span> Other</span>
+                </div>
             </div>
 
-            <!-- Content Panes -->
-            <div id="replayer-pane">
-                <form id="replayerForm" class="space-y-8">
-                    <div class="grid md:grid-cols-2 gap-6">
-                        <div>
-                            <label for="pcapFile" class="block text-sm font-semibold text-cyan-300 mb-2">// Select PCAP
-                                File</label>
-                            <input type="file" id="pcapFile" name="pcapFile" required
-                                class="block w-full text-sm text-cyan-300 file:mr-4 file:py-2 file:px-4 file:border-0 file:text-sm file:font-semibold file:cp-button file:cursor-pointer">
-                        </div>
-                        <div>
-                            <label for="replay_interface" class="block text-sm font-semibold text-cyan-300 mb-2">//
-                                Egress Interface</label>
-                            <input type="text" id="replay_interface" name="interface" placeholder="e.g., eth0" required
-                                class="w-full form-input p-2">
-                        </div>
-                    </div>
-                    <!-- Analysis Status -->
-                    <div id="analysisStatus" class="hidden text-center p-2 text-yellow-400 font-bold"></div>
+            <!-- Endpoints View -->
+            <div id="view-endpoints" class="view-panel hidden">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>IP Address</th>
+                            <th>MAC Address</th>
+                            <th>Tx Packets</th>
+                            <th>Rx Packets</th>
+                            <th>Tx Bytes</th>
+                            <th>Rx Bytes</th>
+                            <th>Protocols</th>
+                        </tr>
+                    </thead>
+                    <tbody id="endpointsBody"></tbody>
+                </table>
+            </div>
 
-                    <!-- Discovered Hosts -->
-                    <div id="discoveredHostsTable" class="hidden">
-                        <div class="flex justify-between items-center mb-2">
-                            <h2 class="section-header">// Discovered Hosts //</h2>
-                            <button type="button" id="viewStatsBtn"
-                                class="text-sm text-cyan-400 hover:text-cyan-200 font-bold border border-cyan-900/50 px-3 py-1 bg-black/50">
-                                [ View Detailed Statistics ]
-                            </button>
-                        </div>
-                        <div class="bg-black/50 p-4 border border-cyan-900/50 max-h-48 overflow-y-auto">
-                            <table class="w-full text-left text-sm">
-                                <thead class="text-cyan-300">
-                                    <tr>
-                                        <th class="p-2">IP Address</th>
-                                        <th class="p-2">Last-Seen MAC</th>
-                                        <th class="p-2 w-16 text-center">Add</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="discoveredHostsBody" class="text-gray-300">
-                                    <!-- JS will populate this -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+            <!-- Conversations View -->
+            <div id="view-conversations" class="view-panel hidden">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Address A</th>
+                            <th>Address B</th>
+                            <th>Packets</th>
+                            <th>Bytes</th>
+                            <th>Protocols</th>
+                            <th>Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody id="conversationsBody"></tbody>
+                </table>
+            </div>
+        </div>
 
-                    <div>
-                        <h2 class="section-header">Advanced Replay Options</h2>
-                        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
-                            <div><label class="block text-sm font-semibold text-cyan-300 mb-2">// Replay
-                                    Speed</label><select name="replay_speed" class="w-full form-input p-2">
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- TAB 2: REWRITER & REPLAY                                      -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <div id="pane-rewriter" class="tab-pane">
+            <div id="rewriterNoFile" class="empty-state">
+                <p>Upload a PCAP on the <strong class="link-text" id="rewriter-nav-to-viewer">PCAP Viewer</strong> tab
+                    first.</p>
+            </div>
+
+            <div id="rewriterContent" class="hidden">
+                <!-- Discovered Hosts -->
+                <section class="section">
+                    <h2 class="section-header">// Discovered Hosts</h2>
+                    <div class="panel">
+                        <table class="data-table compact">
+                            <thead>
+                                <tr>
+                                    <th>Original IP</th>
+                                    <th>MAC</th>
+                                    <th>Label</th>
+                                    <th class="col-arrow"></th>
+                                    <th>New IP</th>
+                                    <th>New MAC</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rewriteHostsBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Replay Settings -->
+                <section class="section">
+                    <h2 class="section-header">// Replay Settings</h2>
+                    <div class="panel">
+                        <div class="form-grid cols-4">
+                            <div class="form-group">
+                                <label class="form-label">Interface</label>
+                                <input type="text" id="replayInterface" placeholder="e.g., eth0" class="form-input">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Speed</label>
+                                <select id="replaySpeed" class="form-input">
                                     <option value="original">Original Timing</option>
                                     <option value="fast">As Fast As Possible</option>
-                                </select></div>
-                            <div class="flex items-center pb-2 space-x-4">
-                                <label class="flex items-center space-x-3 cursor-pointer"><input type="checkbox"
-                                        id="loopReplayCheckbox" name="loop_replay"
-                                        class="form-checkbox h-5 w-5 bg-black border-cyan-700/50 text-cyan-400 focus:ring-cyan-500"><span
-                                        class="font-semibold text-cyan-200">// Loop Replay</span></label>
-                                <div id="loopCountContainer" class="hidden"><input type="number" name="loop_count"
-                                        placeholder="Count" class="form-input p-2 w-24 text-sm"></div>
-                            </div>
-                            <div><label class="block text-sm font-semibold text-cyan-300 mb-2">// Set IP
-                                    TTL</label><input type="number" name="ttl" placeholder="Optional" min="1" max="255"
-                                    class="w-full form-input p-2"></div>
-                            <div><label class="block text-sm font-semibold text-cyan-300 mb-2">// Set VLAN
-                                    ID</label><input type="number" name="vlan_id" placeholder="Optional" min="1"
-                                    max="4094" class="w-full form-input p-2"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <h2 class="section-header">Packet Rewriting</h2>
-                        <div class="grid md:grid-cols-2 gap-x-8 gap-y-6">
-                            <div>
-                                <h3 class="font-semibold mb-2 text-cyan-200">// IP Address Map</h3>
-                                <div id="ipMappingsContainer"></div><button type="button" data-action="add-map"
-                                    data-type="ip"
-                                    class="mt-2 text-sm font-semibold text-cyan-300 hover:text-cyan-200 add-map-btn">+
-                                    Add IP Map</button>
-                            </div>
-                            <div>
-                                <h3 class="font-semibold mb-2 text-cyan-200">// MAC Address Map</h3>
-                                <div id="macMappingsContainer"></div><button type="button" data-action="add-map"
-                                    data-type="mac"
-                                    class="mt-2 text-sm font-semibold text-cyan-300 hover:text-cyan-200 add-map-btn">+
-                                    Add MAC Map</button>
-                            </div>
-                            <div class="md:col-span-2">
-                                <h3 class="font-semibold mb-2 text-cyan-200">// TCP/UDP Port Map</h3>
-                                <div id="portMappingsContainer"></div><button type="button" data-action="add-map"
-                                    data-type="port"
-                                    class="mt-2 text-sm font-semibold text-cyan-300 hover:text-cyan-200 add-map-btn">+
-                                    Add Port Map</button>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Configuration Management -->
-                    <div class="mt-8">
-                        <h2 class="section-header">Configuration Management</h2>
-                        <div class="bg-black/50 p-4 border border-cyan-900/50">
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                                <div>
-                                    <label for="configName" class="block text-xs font-semibold text-cyan-300 mb-1">//
-                                        Configuration Name</label>
-                                    <input type="text" id="configName" placeholder="e.g., My Test Scenario"
-                                        class="w-full form-input p-2 text-sm">
-                                </div>
-                                <div class="md:col-span-2">
-                                    <button id="saveConfigBtn" class="w-full md:w-auto cp-button py-2 px-4 text-sm">Save
-                                        Current Config</button>
-                                </div>
-                                <div>
-                                    <label for="configSelect" class="block text-xs font-semibold text-cyan-300 mb-1">//
-                                        Load Saved Config</label>
-                                    <select id="configSelect" class="w-full form-input p-2 text-sm"></select>
-                                </div>
-                                <div class="md:col-span-2 flex items-end space-x-2">
-                                    <button id="loadConfigBtn" class="cp-button py-2 px-4 text-sm">Load</button>
-                                    <button id="deleteConfigBtn"
-                                        class="cp-button abort-btn py-2 px-4 text-sm">Delete</button>
-                                </div>
-                                <div
-                                    class="md:col-span-3 flex justify-end space-x-2 mt-4 border-t border-cyan-900/50 pt-4">
-                                    <button id="exportConfigBtn" type="button"
-                                        class="cp-button py-2 px-4 text-sm">Export JSON</button>
-                                    <button id="importConfigBtn" type="button"
-                                        class="cp-button py-2 px-4 text-sm">Import JSON</button>
-                                    <input type="file" id="importFile" class="hidden" accept=".json">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="pt-4"><button type="submit" class="w-full cp-button submit-btn py-3">Initiate
-                            Replay</button></div>
-                </form>
-            </div>
-
-            <div id="viewer-pane" class="hidden h-full flex flex-col">
-                <div id="viewer-placeholder">
-                    <h2 class="section-header text-center">// Packet Viewer //</h2>
-                    <p class="text-center text-gray-400">
-                        Please upload a PCAP file on the
-                        <strong class="text-cyan-400 cursor-pointer" id="viewer-nav-to-replayer">
-                            // PCAP Replayer //
-                        </strong>
-                        tab to analyze and view packets.
-                    </p>
-                </div>
-
-                <div id="packetViewer" class="hidden flex flex-col h-[80vh]">
-                    <!-- Top Pane: Packet List -->
-                    <div class="flex justify-between items-center mb-2 px-1 bg-black/40 p-2 border border-cyan-900/30">
-                        <h2 class="section-header">// Packet Viewer //</h2>
-                        <div class="flex items-center space-x-2">
-                            <label for="viewerModeSelect"
-                                class="text-xs font-bold text-cyan-500 uppercase tracking-wider">View Mode:</label>
-                            <select id="viewerModeSelect"
-                                class="form-input p-1 text-sm w-48 border-cyan-700/50 focus:border-cyan-400">
-                                <option value="packets">Packet List</option>
-                                <option value="endpoints">Endpoints</option>
-                                <option value="conversations">Conversations</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Packet List Table -->
-                    <div id="packetListView"
-                        class="flex-1 overflow-y-auto border border-cyan-900/50 bg-black/50 mb-4 relative">
-                        <table class="w-full text-left text-xs relative">
-                            <thead class="text-cyan-300 sticky top-0 bg-black z-10 shadow-lg shadow-cyan-900/20">
-                                <tr>
-                                    <th class="p-2 w-16 bg-black">No.</th>
-                                    <th class="p-2 bg-black">Source</th>
-                                    <th class="p-2 bg-black">Destination</th>
-                                    <th class="p-2 w-20 bg-black">Protocol</th>
-                                    <th class="p-2 bg-black">Info</th>
-                                </tr>
-                            </thead>
-                            <tbody id="packetViewerBody" class="text-gray-300">
-                                <!-- JS will populate this -->
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Endpoints Table -->
-                    <div id="endpointsView"
-                        class="hidden flex-1 overflow-y-auto border border-cyan-900/50 bg-black/50 mb-4 relative">
-                        <table class="w-full text-left text-xs relative">
-                            <thead class="text-cyan-300 sticky top-0 bg-black z-10 shadow-lg shadow-cyan-900/20">
-                                <tr>
-                                    <th class="p-2 bg-black">IP Address</th>
-                                    <th class="p-2 bg-black">Tx Packets</th>
-                                    <th class="p-2 bg-black">Rx Packets</th>
-                                    <th class="p-2 bg-black">Tx Bytes</th>
-                                    <th class="p-2 bg-black">Rx Bytes</th>
-                                </tr>
-                            </thead>
-                            <tbody id="endpointsBody" class="text-gray-300"></tbody>
-                        </table>
-                    </div>
-
-                    <!-- Conversations Table -->
-                    <div id="conversationsView"
-                        class="hidden flex-1 overflow-y-auto border border-cyan-900/50 bg-black/50 mb-4 relative">
-                        <table class="w-full text-left text-xs relative">
-                            <thead class="text-cyan-300 sticky top-0 bg-black z-10 shadow-lg shadow-cyan-900/20">
-                                <tr>
-                                    <th class="p-2 bg-black">Address A</th>
-                                    <th class="p-2 bg-black">Address B</th>
-                                    <th class="p-2 bg-black">Packets</th>
-                                    <th class="p-2 bg-black">Bytes</th>
-                                    <th class="p-2 bg-black">Duration (s)</th>
-                                </tr>
-                            </thead>
-                            <tbody id="conversationsBody" class="text-gray-300"></tbody>
-                        </table>
-                    </div>
-
-                    <!-- Bottom Pane: Packet Details -->
-                    <div id="packetDetailsPane" class="h-1/3 border border-cyan-900/50 bg-black/50 p-4 overflow-y-auto">
-                        <h3 class="text-cyan-300 font-bold mb-2 text-sm border-b border-cyan-900/50 pb-1">Packet Details
-                        </h3>
-                        <div id="packetDetails" class="detail-tree text-gray-300">
-                            <div class="text-gray-500 italic">Select a packet to view details...</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div id="generator-pane" class="hidden">
-                <form id="generatorForm" class="space-y-8">
-                    <div>
-                        <h2 class="section-header">Network Layers (L2/L3)</h2>
-                        <div class="grid md:grid-cols-2 gap-x-6 gap-y-4">
-                            <div>
-                                <label class="block text-sm font-semibold text-cyan-300 mb-2">// Source IP</label>
-                                <div class="flex"><select data-asset-target="src"
-                                        class="asset-select form-input p-2 w-1/3"></select><input type="text"
-                                        name="src_ip" required placeholder="10.0.0.5" class="w-2/3 form-input p-2"
-                                        data-validate="ip"></div>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-semibold text-cyan-300 mb-2">// Destination IP</label>
-                                <div class="flex"><select data-asset-target="dst"
-                                        class="asset-select form-input p-2 w-1/3"></select><input type="text"
-                                        name="dst_ip" required placeholder="10.0.0.10" class="w-2/3 form-input p-2"
-                                        data-validate="ip"></div>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-semibold text-cyan-300 mb-2">// Source MAC
-                                    (Optional)</label>
-                                <div class="flex"><select data-asset-target="src"
-                                        class="asset-select form-input p-2 w-1/3"></select><input type="text"
-                                        name="src_mac" placeholder="auto-detect" class="w-2/3 form-input p-2"
-                                        data-validate="mac"></div>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-semibold text-cyan-300 mb-2">// Destination MAC</label>
-                                <div class="flex"><select data-asset-target="dst"
-                                        class="asset-select form-input p-2 w-1/3"></select><input type="text"
-                                        name="dst_mac" required value="ff:ff:ff:ff:ff:ff" class="w-2/3 form-input p-2"
-                                        data-validate="mac"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div>
-                        <h2 class="section-header">Transport Layer (L4) & Payload</h2>
-                        <div class="grid md:grid-cols-2 gap-x-6 gap-y-4">
-                            <div>
-                                <label class="block text-sm font-semibold text-cyan-300 mb-2">// Protocol</label><select
-                                    id="protocol" name="protocol" class="w-full form-input p-2">
-                                    <option value="tcp">TCP</option>
-                                    <option value="udp">UDP</option>
-                                    <option value="icmp">ICMP</option>
                                 </select>
                             </div>
-                            <div class="grid grid-cols-2 gap-4 port-fields">
-                                <div><label class="block text-sm font-semibold text-cyan-300 mb-2">// Src
-                                        Port</label><input type="number" name="src_port" value="1337"
-                                        class="w-full form-input p-2"></div>
-                                <div><label class="block text-sm font-semibold text-cyan-300 mb-2">// Dst
-                                        Port</label><input type="number" name="dst_port" value="80"
-                                        class="w-full form-input p-2"></div>
+                            <div class="form-group">
+                                <label class="form-label">TTL</label>
+                                <input type="number" id="replayTtl" placeholder="Optional" min="1" max="255"
+                                    class="form-input">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">VLAN ID</label>
+                                <input type="number" id="replayVlan" placeholder="Optional" min="1" max="4094"
+                                    class="form-input">
                             </div>
                         </div>
-                        <div class="mt-4"><label class="block text-sm font-semibold text-cyan-300 mb-2">// Payload
-                                (Optional)</label><textarea name="payload" rows="3" placeholder="Inject data stream..."
-                                class="w-full form-input p-2"></textarea></div>
-                    </div>
-                    <div>
-                        <h2 class="section-header">Transmission Control</h2>
-                        <div class="grid md:grid-cols-3 gap-6">
-                            <div><label class="block text-sm font-semibold text-cyan-300 mb-2">// Packet
-                                    Count</label><input type="number" name="packet_count" value="100" required
-                                    class="w-full form-input p-2"></div>
-                            <div><label class="block text-sm font-semibold text-cyan-300 mb-2">// Delay
-                                    (s)</label><input type="number" name="delay" value="0.1" step="0.01" required
-                                    class="w-full form-input p-2"></div>
-                            <div><label class="block text-sm font-semibold text-cyan-300 mb-2">//
-                                    Interface</label><input type="text" name="interface" placeholder="e.g., eth0"
-                                    required class="w-full form-input p-2"></div>
+                        <div class="form-row" style="margin-top: 1rem;">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="replayLoop"> Loop Replay
+                            </label>
+                            <input type="number" id="replayLoopCount" placeholder="Count (0 = ∞)" min="0"
+                                class="form-input small hidden" style="width: 140px;">
                         </div>
                     </div>
-                    <div class="pt-4"><button type="submit" class="w-full cp-button submit-btn py-3">Generate
-                            Traffic</button></div>
-                </form>
-            </div>
+                </section>
 
-            <!-- Shared Status Display -->
-            <div id="statusContainer" class="mt-10 hidden">
-                <div class="p-4 bg-black/50 border border-cyan-900/50">
-                    <div class="flex justify-between items-center mb-3">
-                        <h3 id="statusTitle" class="section-header">Task Status</h3>
-                        <button id="stopBtn"
-                            class="cp-button abort-btn py-2 px-4 text-sm disabled:opacity-50 disabled:cursor-not-allowed">Abort</button>
-                    </div>
-                    <div class="w-full bg-gray-700/50 border border-cyan-900/50 h-2.5 mb-2">
-                        <div id="progressBar" class="bg-cyan-400 h-full transition-all duration-500" style="width: 0%">
-                        </div>
-                    </div>
-                    <p id="statusMessage" class="text-center text-cyan-300"></p>
+                <!-- Action Buttons -->
+                <div class="action-bar">
+                    <button id="downloadRewrittenBtn" class="btn btn-primary">
+                        ↓ Download Rewritten PCAP
+                    </button>
+                    <button id="startReplayBtn" class="btn btn-accent">
+                        ▶ Replay to Interface
+                    </button>
+                    <button id="stopReplayBtn" class="btn btn-danger hidden">
+                        ■ Stop Replay
+                    </button>
                 </div>
-                <div class="mt-6"><canvas id="trafficChart"></canvas></div>
-                <div class="mt-6">
-                    <button id="toggleConsoleBtn"
-                        class="w-full text-left p-3 bg-black/50 hover:bg-gray-900/50 border border-cyan-900/50 font-semibold flex justify-between items-center transition-colors"><span>//
-                            System Log</span><span id="consoleArrow" class="transition-transform">▼</span></button>
 
-                    <div id="consoleWrapper" class="hidden">
-                        <div id="consoleOutput"
-                            class="p-3 border border-t-0 border-cyan-900/50 text-sm bg-black max-h-64 overflow-y-auto">
-                        </div>
+                <!-- Replay Status -->
+                <div id="replayStatus" class="panel status-panel hidden">
+                    <div class="status-header">
+                        <h3 class="section-header">// Replay Status</h3>
+                        <span id="replayPps" class="pps-badge">0 pps</span>
                     </div>
-
+                    <div class="progress-bar">
+                        <div id="replayProgress" class="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <p id="replayMessage" class="status-message"></p>
+                    <div class="log-toggle">
+                        <button id="toggleLogBtn" class="btn btn-ghost">▼ System Log</button>
+                    </div>
+                    <div id="replayLog" class="log-output hidden"></div>
                 </div>
             </div>
         </div>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- TAB 3: TRAFFIC GENERATOR                                      -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <div id="pane-generator" class="tab-pane">
+            <!-- Common Settings -->
+            <section class="section">
+                <h2 class="section-header">// Generator Settings</h2>
+                <div class="panel">
+                    <div class="form-grid cols-4">
+                        <div class="form-group">
+                            <label class="form-label">Source IP</label>
+                            <input type="text" id="genSrcIp" value="10.0.0.100" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Destination IP</label>
+                            <input type="text" id="genDstIp" value="10.0.0.1" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Interface</label>
+                            <input type="text" id="genInterface" value="eth0" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">C2 Host</label>
+                            <input type="text" id="genC2Host" value="185.100.87.42" class="form-input">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Protocol Templates -->
+            <section class="section">
+                <h2 class="section-header">// Protocol Templates</h2>
+                <div class="card-grid">
+                    <div class="gen-card" data-type="protocol" data-proto="dns">
+                        <div class="gen-card-icon">🌐</div>
+                        <h3>DNS</h3>
+                        <p>Query/response pairs</p>
+                        <div class="gen-card-config">
+                            <input type="text" placeholder="Domain" value="example.com" class="form-input small"
+                                data-field="domain">
+                            <input type="number" placeholder="Count" value="10" class="form-input small"
+                                data-field="count">
+                        </div>
+                        <button class="btn btn-primary btn-sm gen-run-btn">Generate</button>
+                    </div>
+
+                    <div class="gen-card" data-type="protocol" data-proto="ftp">
+                        <div class="gen-card-icon">📁</div>
+                        <h3>FTP</h3>
+                        <p>Login + file transfer</p>
+                        <div class="gen-card-config">
+                            <input type="number" placeholder="Delay (s)" value="0.3" step="0.1" class="form-input small"
+                                data-field="delay">
+                        </div>
+                        <button class="btn btn-primary btn-sm gen-run-btn">Generate</button>
+                    </div>
+
+                    <div class="gen-card" data-type="protocol" data-proto="smtp">
+                        <div class="gen-card-icon">✉️</div>
+                        <h3>SMTP</h3>
+                        <p>Email send sequence</p>
+                        <div class="gen-card-config">
+                            <input type="text" placeholder="Domain" value="example.com" class="form-input small"
+                                data-field="domain">
+                        </div>
+                        <button class="btn btn-primary btn-sm gen-run-btn">Generate</button>
+                    </div>
+
+                    <div class="gen-card" data-type="protocol" data-proto="snmp">
+                        <div class="gen-card-icon">📊</div>
+                        <h3>SNMP</h3>
+                        <p>GET/SET community exchanges</p>
+                        <div class="gen-card-config">
+                            <input type="number" placeholder="Count" value="10" class="form-input small"
+                                data-field="count">
+                        </div>
+                        <button class="btn btn-primary btn-sm gen-run-btn">Generate</button>
+                    </div>
+
+                    <div class="gen-card" data-type="protocol" data-proto="ntp">
+                        <div class="gen-card-icon">🕐</div>
+                        <h3>NTP</h3>
+                        <p>Time sync requests</p>
+                        <div class="gen-card-config">
+                            <input type="number" placeholder="Count" value="10" class="form-input small"
+                                data-field="count">
+                        </div>
+                        <button class="btn btn-primary btn-sm gen-run-btn">Generate</button>
+                    </div>
+
+                    <div class="gen-card" data-type="protocol" data-proto="http">
+                        <div class="gen-card-icon">🔗</div>
+                        <h3>HTTP</h3>
+                        <p>GET/POST with headers</p>
+                        <div class="gen-card-config">
+                            <input type="text" placeholder="Domain" value="example.com" class="form-input small"
+                                data-field="domain">
+                            <input type="number" placeholder="Count" value="10" class="form-input small"
+                                data-field="count">
+                        </div>
+                        <button class="btn btn-primary btn-sm gen-run-btn">Generate</button>
+                    </div>
+
+                    <div class="gen-card" data-type="protocol" data-proto="icmp">
+                        <div class="gen-card-icon">📡</div>
+                        <h3>ICMP</h3>
+                        <p>Echo requests (ping)</p>
+                        <div class="gen-card-config">
+                            <input type="number" placeholder="Count" value="10" class="form-input small"
+                                data-field="count">
+                        </div>
+                        <button class="btn btn-primary btn-sm gen-run-btn">Generate</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Adversary Simulations -->
+            <section class="section">
+                <h2 class="section-header">// Adversary Simulations</h2>
+                <div class="card-grid">
+                    <div class="gen-card adversary" data-type="adversary" data-sim="c2_beacon">
+                        <div class="gen-card-icon">🎯</div>
+                        <h3>C2 Beaconing</h3>
+                        <p>Periodic HTTPS callbacks</p>
+                        <div class="gen-card-config">
+                            <input type="number" placeholder="Count" value="50" class="form-input small"
+                                data-field="count">
+                            <input type="number" placeholder="Interval (s)" value="5" step="0.5"
+                                class="form-input small" data-field="delay">
+                        </div>
+                        <button class="btn btn-danger btn-sm gen-run-btn">Simulate</button>
+                    </div>
+
+                    <div class="gen-card adversary" data-type="adversary" data-sim="dns_exfil">
+                        <div class="gen-card-icon">🔓</div>
+                        <h3>DNS Exfiltration</h3>
+                        <p>Data encoded in queries</p>
+                        <div class="gen-card-config">
+                            <input type="text" placeholder="Exfil Domain" value="evil-c2.xyz" class="form-input small"
+                                data-field="domain">
+                            <input type="number" placeholder="Count" value="30" class="form-input small"
+                                data-field="count">
+                        </div>
+                        <button class="btn btn-danger btn-sm gen-run-btn">Simulate</button>
+                    </div>
+
+                    <div class="gen-card adversary" data-type="adversary" data-sim="port_scan">
+                        <div class="gen-card-icon">🔍</div>
+                        <h3>Port Scanning</h3>
+                        <p>SYN scan common ports</p>
+                        <div class="gen-card-config">
+                            <input type="number" placeholder="Delay (s)" value="0.05" step="0.01"
+                                class="form-input small" data-field="delay">
+                        </div>
+                        <button class="btn btn-danger btn-sm gen-run-btn">Simulate</button>
+                    </div>
+
+                    <div class="gen-card adversary" data-type="adversary" data-sim="lateral_movement">
+                        <div class="gen-card-icon">🕸️</div>
+                        <h3>Lateral Movement</h3>
+                        <p>SMB/WinRM/RDP across subnet</p>
+                        <div class="gen-card-config">
+                            <input type="number" placeholder="Delay (s)" value="0.02" step="0.01"
+                                class="form-input small" data-field="delay">
+                        </div>
+                        <button class="btn btn-danger btn-sm gen-run-btn">Simulate</button>
+                    </div>
+
+                    <div class="gen-card adversary" data-type="adversary" data-sim="http_exfil">
+                        <div class="gen-card-icon">📤</div>
+                        <h3>HTTP Exfiltration</h3>
+                        <p>Large POST to external IPs</p>
+                        <div class="gen-card-config">
+                            <input type="number" placeholder="Count" value="10" class="form-input small"
+                                data-field="count">
+                        </div>
+                        <button class="btn btn-danger btn-sm gen-run-btn">Simulate</button>
+                    </div>
+
+                    <div class="gen-card adversary" data-type="adversary" data-sim="dga">
+                        <div class="gen-card-icon">🎲</div>
+                        <h3>DGA Traffic</h3>
+                        <p>Algorithmically generated domains</p>
+                        <div class="gen-card-config">
+                            <input type="number" placeholder="Count" value="50" class="form-input small"
+                                data-field="count">
+                        </div>
+                        <button class="btn btn-danger btn-sm gen-run-btn">Simulate</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Generator Status -->
+            <div id="genStatus" class="panel status-panel hidden">
+                <div class="status-header">
+                    <h3 class="section-header">// Generator Status</h3>
+                    <span id="genPps" class="pps-badge">0 pps</span>
+                </div>
+                <div class="progress-bar">
+                    <div id="genProgress" class="progress-fill" style="width: 0%"></div>
+                </div>
+                <p id="genMessage" class="status-message"></p>
+                <button id="genStopBtn" class="btn btn-danger" style="margin-top: 0.5rem;">■ Stop</button>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- TAB 4: PROFILES                                               -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <div id="pane-profiles" class="tab-pane">
+            <section class="section">
+                <h2 class="section-header">// Saved Profiles</h2>
+                <div class="panel">
+                    <div class="form-row" style="margin-bottom: 1rem;">
+                        <input type="text" id="profileName" placeholder="Profile name..." class="form-input"
+                            style="flex: 1;">
+                        <button id="saveProfileBtn" class="btn btn-primary">Save Current</button>
+                        <button id="importProfileBtn" class="btn btn-ghost">Import JSON</button>
+                        <input type="file" id="importProfileFile" class="hidden" accept=".json">
+                    </div>
+                    <div id="profileList" class="profile-list">
+                        <div class="placeholder">No saved profiles yet.</div>
+                    </div>
+                </div>
+            </section>
+        </div>
     </div>
 
-    <!-- Context Menu -->
-    <div id="contextMenu" class="context-menu">
-        <div class="context-menu-item" id="ctxRewriteSrcIp">Rewrite Source IP</div>
-        <div class="context-menu-item" id="ctxRewriteDstIp">Rewrite Dest IP</div>
-        <div class="context-menu-item" id="ctxRewriteSrcMac">Rewrite Source MAC</div>
-        <div class="context-menu-item" id="ctxRewriteDstMac">Rewrite Dest MAC</div>
-    </div>
-
-    <script src="{{ url_for('static', filename='js/main.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 
 </html>
