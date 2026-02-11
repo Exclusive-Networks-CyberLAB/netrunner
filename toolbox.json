@@ -1,0 +1,14 @@
+{
+  "display_name": "Netrunner",
+  "description": "Packet replay + web UI",
+  "interactive": true,
+  "python": {
+    "script": "netrunner-v1.py",
+    "venv": ".venv",
+    "requirements": "requirements.txt"
+  },
+  "prerequisites": [
+    "Npcap installed (for scapy on Windows)"
+  ],
+  "help": "If you see missing modules, ensure requirements.txt exists and rerun."
+}
