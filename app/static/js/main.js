@@ -861,17 +861,70 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Validation helpers
+    const ipRegex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+    const macRegex = /^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$/;
+
+    function setFieldError(inputId, errorId, message) {
+        const input = document.getElementById(inputId);
+        const error = document.getElementById(errorId);
+        input.classList.add('invalid');
+        error.textContent = message;
+    }
+
+    function clearFieldError(inputId, errorId) {
+        const input = document.getElementById(inputId);
+        const error = document.getElementById(errorId);
+        input.classList.remove('invalid');
+        error.textContent = '';
+    }
+
+    // Auto-clear errors on input
+    document.getElementById('addrIp').addEventListener('input', () => clearFieldError('addrIp', 'addrIpError'));
+    document.getElementById('addrMac').addEventListener('input', () => clearFieldError('addrMac', 'addrMacError'));
+
     document.getElementById('addAddressBtn').addEventListener('click', async () => {
         const name = document.getElementById('addrName').value.trim();
         const ip = document.getElementById('addrIp').value.trim();
         const mac = document.getElementById('addrMac').value.trim();
-        if (!ip) { alert('IP address is required.'); return; }
+
+        // Clear previous errors
+        clearFieldError('addrIp', 'addrIpError');
+        clearFieldError('addrMac', 'addrMacError');
+
+        let valid = true;
+
+        // Validate IP
+        if (!ip) {
+            setFieldError('addrIp', 'addrIpError', 'IP address is required.');
+            valid = false;
+        } else {
+            const m = ip.match(ipRegex);
+            if (!m || m.slice(1).some(o => parseInt(o) > 255)) {
+                setFieldError('addrIp', 'addrIpError', 'Invalid IP format. Expected: 0-255.0-255.0-255.0-255');
+                valid = false;
+            }
+        }
+
+        // Validate MAC (optional, but must be valid if provided)
+        if (mac && !macRegex.test(mac)) {
+            setFieldError('addrMac', 'addrMacError', 'Invalid MAC format. Expected: aa:bb:cc:dd:ee:ff');
+            valid = false;
+        }
+
+        if (!valid) return;
+
         try {
-            await fetch('/addresses', {
+            const resp = await fetch('/addresses', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, ip, mac })
             });
+            if (!resp.ok) {
+                const err = await resp.json();
+                alert(`Error: ${err.error}`);
+                return;
+            }
             document.getElementById('addrName').value = '';
             document.getElementById('addrIp').value = '';
             document.getElementById('addrMac').value = '';

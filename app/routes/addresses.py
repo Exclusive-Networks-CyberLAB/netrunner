@@ -16,13 +16,16 @@ def get_all():
 @bp.route('/addresses', methods=['POST'])
 def create():
     data = request.get_json()
-    if not data or not data.get('ip'):
-        return jsonify({'error': 'IP address is required.'}), 400
-    entry = add_address(
-        name=data.get('name', ''),
-        ip=data['ip'],
-        mac=data.get('mac', '')
-    )
+    if not data:
+        return jsonify({'error': 'No data provided.'}), 400
+    try:
+        entry = add_address(
+            name=data.get('name', ''),
+            ip=data.get('ip', ''),
+            mac=data.get('mac', '')
+        )
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     return jsonify(entry), 201
 
 

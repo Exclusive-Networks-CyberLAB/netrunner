@@ -5,6 +5,7 @@ Persistent storage for IP/MAC address pairs.
 
 import os
 import json
+import re
 import uuid
 
 ADDRESSES_FILE = os.path.join(
@@ -12,6 +13,39 @@ ADDRESSES_FILE = os.path.join(
     'data', 'addresses.json'
 )
 
+# ── Validation ──────────────────────────────────────────────────────────────
+
+_IP_RE = re.compile(
+    r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$'
+)
+_MAC_RE = re.compile(
+    r'^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'
+)
+
+
+def validate_ip(ip):
+    """Return (ok, error_message) for an IPv4 address string."""
+    if not ip or not ip.strip():
+        return False, 'IP address is required.'
+    m = _IP_RE.match(ip.strip())
+    if not m:
+        return False, 'Invalid IP format. Expected: 0-255.0-255.0-255.0-255'
+    for octet in m.groups():
+        if int(octet) > 255:
+            return False, 'Each IP octet must be between 0 and 255.'
+    return True, ''
+
+
+def validate_mac(mac):
+    """Return (ok, error_message) for a MAC address string. Empty is OK."""
+    if not mac or not mac.strip():
+        return True, ''  # MAC is optional
+    if not _MAC_RE.match(mac.strip()):
+        return False, 'Invalid MAC format. Expected: aa:bb:cc:dd:ee:ff'
+    return True, ''
+
+
+# ── Storage helpers ─────────────────────────────────────────────────────────
 
 def _ensure_file():
     os.makedirs(os.path.dirname(ADDRESSES_FILE), exist_ok=True)
@@ -34,13 +68,20 @@ def _save_all(addresses):
 
 
 def add_address(name, ip, mac):
-    """Add a new address entry. Returns the new entry."""
+    """Add a new address entry. Raises ValueError on bad format."""
+    ok, err = validate_ip(ip)
+    if not ok:
+        raise ValueError(err)
+    ok, err = validate_mac(mac)
+    if not ok:
+        raise ValueError(err)
+
     addresses = list_addresses()
     entry = {
         "id": str(uuid.uuid4())[:8],
         "name": name,
-        "ip": ip,
-        "mac": mac
+        "ip": ip.strip(),
+        "mac": mac.strip() if mac else ''
     }
     addresses.append(entry)
     _save_all(addresses)
