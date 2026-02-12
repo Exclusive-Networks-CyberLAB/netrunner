@@ -23,11 +23,13 @@ def create_app():
     from app.routes.replay import bp as replay_bp
     from app.routes.generator import bp as generator_bp
     from app.routes.profiles import bp as profiles_bp
+    from app.routes.addresses import bp as addresses_bp
 
     app.register_blueprint(pcap_bp)
     app.register_blueprint(replay_bp)
     app.register_blueprint(generator_bp)
     app.register_blueprint(profiles_bp)
+    app.register_blueprint(addresses_bp)
 
     @app.route('/')
     def index():

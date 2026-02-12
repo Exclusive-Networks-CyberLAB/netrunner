@@ -981,6 +981,129 @@ select:focus {
     }
 }
 
+/* ── Address Book ────────────────────────────────────────────────────────── */
+
+.address-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.address-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    transition: border-color 0.3s;
+}
+
+.address-item:hover {
+    border-color: var(--cyan);
+}
+
+.address-item .addr-info {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+}
+
+.address-item .addr-name {
+    color: var(--yellow);
+    min-width: 120px;
+}
+
+.address-item .addr-ip {
+    color: var(--text);
+    min-width: 120px;
+}
+
+.address-item .addr-mac {
+    color: var(--text-dim);
+    min-width: 140px;
+}
+
+.input-with-picker {
+    display: flex;
+    gap: 0;
+    width: 100%;
+}
+
+.input-with-picker .form-input,
+.input-with-picker .rewrite-input {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    flex: 1;
+    min-width: 0;
+}
+
+.addr-pick-btn {
+    font-family: var(--font-mono);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-left: none;
+    color: var(--cyan);
+    padding: 0 0.5rem;
+    cursor: pointer;
+    font-size: 0.7rem;
+    border-top-right-radius: var(--radius);
+    border-bottom-right-radius: var(--radius);
+    transition: all 0.3s;
+    flex-shrink: 0;
+}
+
+.addr-pick-btn:hover {
+    background: var(--cyan);
+    color: var(--bg);
+}
+
+.addr-dropdown {
+    position: fixed;
+    z-index: 100;
+    background: var(--surface);
+    border: 1px solid var(--cyan);
+    border-radius: var(--radius);
+    max-height: 200px;
+    overflow-y: auto;
+    min-width: 280px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), var(--glow-cyan);
+}
+
+.addr-dropdown-item {
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+}
+
+.addr-dropdown-item:hover {
+    background: rgba(0, 243, 255, 0.1);
+    color: var(--text-bright);
+}
+
+.addr-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.addr-dropdown-item .addr-drop-name {
+    color: var(--yellow);
+}
+
+.addr-dropdown-item .addr-drop-detail {
+    color: var(--text-dim);
+}
+
 /* ── Utility ──────────────────────────────────────────────────────────────── */
 
 .hidden {

@@ -247,11 +247,17 @@
                     <div class="form-grid cols-4">
                         <div class="form-group">
                             <label class="form-label">Source IP</label>
-                            <input type="text" id="genSrcIp" value="10.0.0.100" class="form-input">
+                            <div class="input-with-picker">
+                                <input type="text" id="genSrcIp" value="10.0.0.100" class="form-input">
+                                <button class="addr-pick-btn" data-target="src" title="Pick from Address Book">&#x25BC;</button>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Destination IP</label>
-                            <input type="text" id="genDstIp" value="10.0.0.1" class="form-input">
+                            <div class="input-with-picker">
+                                <input type="text" id="genDstIp" value="10.0.0.1" class="form-input">
+                                <button class="addr-pick-btn" data-target="dst" title="Pick from Address Book">&#x25BC;</button>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Interface</label>
@@ -259,8 +265,38 @@
                         </div>
                         <div class="form-group">
                             <label class="form-label">C2 Host</label>
-                            <input type="text" id="genC2Host" value="185.100.87.42" class="form-input">
+                            <div class="input-with-picker">
+                                <input type="text" id="genC2Host" value="185.100.87.42" class="form-input">
+                                <button class="addr-pick-btn" data-target="c2" title="Pick from Address Book">&#x25BC;</button>
+                            </div>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Address Book -->
+            <section class="section">
+                <h2 class="section-header">// Address Book</h2>
+                <div class="panel">
+                    <div class="form-grid cols-4" style="margin-bottom: 1rem;">
+                        <div class="form-group">
+                            <label class="form-label">Name</label>
+                            <input type="text" id="addrName" placeholder="e.g., Victim Host" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">IP Address</label>
+                            <input type="text" id="addrIp" placeholder="10.0.0.100" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">MAC Address</label>
+                            <input type="text" id="addrMac" placeholder="aa:bb:cc:dd:ee:ff" class="form-input">
+                        </div>
+                        <div class="form-group" style="display: flex; align-items: flex-end;">
+                            <button id="addAddressBtn" class="btn btn-primary btn-sm">+ Save</button>
+                        </div>
+                    </div>
+                    <div id="addressList" class="address-list">
+                        <div class="placeholder">No saved addresses yet.</div>
                     </div>
                 </div>
             </section>
@@ -366,7 +402,7 @@
                             <input type="number" placeholder="Interval (s)" value="5" step="0.5"
                                 class="form-input small" data-field="delay">
                         </div>
-                        <button class="btn btn-danger btn-sm gen-run-btn">Simulate</button>
+                        <button class="btn btn-danger btn-sm gen-run-btn">Execute</button>
                     </div>
 
                     <div class="gen-card adversary" data-type="adversary" data-sim="dns_exfil">
@@ -379,7 +415,7 @@
                             <input type="number" placeholder="Count" value="30" class="form-input small"
                                 data-field="count">
                         </div>
-                        <button class="btn btn-danger btn-sm gen-run-btn">Simulate</button>
+                        <button class="btn btn-danger btn-sm gen-run-btn">Execute</button>
                     </div>
 
                     <div class="gen-card adversary" data-type="adversary" data-sim="port_scan">
@@ -390,7 +426,7 @@
                             <input type="number" placeholder="Delay (s)" value="0.05" step="0.01"
                                 class="form-input small" data-field="delay">
                         </div>
-                        <button class="btn btn-danger btn-sm gen-run-btn">Simulate</button>
+                        <button class="btn btn-danger btn-sm gen-run-btn">Execute</button>
                     </div>
 
                     <div class="gen-card adversary" data-type="adversary" data-sim="lateral_movement">
@@ -401,7 +437,7 @@
                             <input type="number" placeholder="Delay (s)" value="0.02" step="0.01"
                                 class="form-input small" data-field="delay">
                         </div>
-                        <button class="btn btn-danger btn-sm gen-run-btn">Simulate</button>
+                        <button class="btn btn-danger btn-sm gen-run-btn">Execute</button>
                     </div>
 
                     <div class="gen-card adversary" data-type="adversary" data-sim="http_exfil">
@@ -412,7 +448,7 @@
                             <input type="number" placeholder="Count" value="10" class="form-input small"
                                 data-field="count">
                         </div>
-                        <button class="btn btn-danger btn-sm gen-run-btn">Simulate</button>
+                        <button class="btn btn-danger btn-sm gen-run-btn">Execute</button>
                     </div>
 
                     <div class="gen-card adversary" data-type="adversary" data-sim="dga">
@@ -423,7 +459,7 @@
                             <input type="number" placeholder="Count" value="50" class="form-input small"
                                 data-field="count">
                         </div>
-                        <button class="btn btn-danger btn-sm gen-run-btn">Simulate</button>
+                        <button class="btn btn-danger btn-sm gen-run-btn">Execute</button>
                     </div>
                 </div>
             </section>

@@ -318,11 +318,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${h.ip}</td>
                 <td style="color: var(--text-dim)">${h.mac}</td>
                 <td><input type="text" class="rewrite-input label-input" placeholder="Label..." data-host-ip="${h.ip}" data-field="label"></td>
-                <td class="rewrite-arrow">→</td>
-                <td><input type="text" class="rewrite-input" placeholder="New IP" data-host-ip="${h.ip}" data-orig-ip="${h.ip}" data-field="new_ip"></td>
-                <td><input type="text" class="rewrite-input" placeholder="New MAC" data-host-mac="${h.mac}" data-orig-mac="${h.mac}" data-field="new_mac"></td>
+                <td class="rewrite-arrow">&rarr;</td>
+                <td>
+                    <div class="input-with-picker">
+                        <input type="text" class="rewrite-input" placeholder="New IP" data-host-ip="${h.ip}" data-orig-ip="${h.ip}" data-field="new_ip">
+                        <button class="addr-pick-btn rewrite-addr-pick" data-target="rewrite_ip_${h.ip}" title="Pick from Address Book">&#x25BC;</button>
+                    </div>
+                </td>
+                <td>
+                    <div class="input-with-picker">
+                        <input type="text" class="rewrite-input" placeholder="New MAC" data-host-mac="${h.mac}" data-orig-mac="${h.mac}" data-field="new_mac">
+                        <button class="addr-pick-btn rewrite-addr-pick" data-target="rewrite_mac_${h.mac}" title="Pick from Address Book">&#x25BC;</button>
+                    </div>
+                </td>
             `;
             rewriteHostsBody.appendChild(tr);
+        });
+        // Wire up rewriter address picker buttons
+        rewriteHostsBody.querySelectorAll('.rewrite-addr-pick').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showAddressDropdown(btn.dataset.target, btn);
+            });
         });
     }
 
@@ -508,11 +525,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const protoOrSim = isAdversary ? card.dataset.sim : card.dataset.proto;
 
             // Gather common settings
+            const srcIpEl = document.getElementById('genSrcIp');
+            const dstIpEl = document.getElementById('genDstIp');
             const payload = {
-                src_ip: document.getElementById('genSrcIp').value,
-                dst_ip: document.getElementById('genDstIp').value,
+                src_ip: srcIpEl.value,
+                dst_ip: dstIpEl.value,
                 interface: document.getElementById('genInterface').value,
                 c2_host: document.getElementById('genC2Host').value,
+                src_mac: srcIpEl.dataset.mac || null,
+                dst_mac: dstIpEl.dataset.mac || null,
             };
 
             // Gather card-specific settings
@@ -780,6 +801,150 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ═══════════════════════════════════════════════════════════════════
+    // ADDRESS BOOK
+    // ═══════════════════════════════════════════════════════════════════
+
+    let addressBookCache = [];
+
+    async function loadAddresses() {
+        try {
+            const resp = await fetch('/addresses');
+            addressBookCache = await resp.json();
+            renderAddressList();
+        } catch (err) {
+            console.error('Failed to load addresses:', err);
+        }
+    }
+
+    function renderAddressList() {
+        const list = document.getElementById('addressList');
+        if (!addressBookCache.length) {
+            list.innerHTML = '<div class="placeholder">No saved addresses yet.</div>';
+            return;
+        }
+        list.innerHTML = '';
+        addressBookCache.forEach(addr => {
+            const div = document.createElement('div');
+            div.className = 'address-item';
+            div.innerHTML = `
+                <div class="addr-info">
+                    <span class="addr-name">${escHtml(addr.name || 'Unnamed')}</span>
+                    <span class="addr-ip">${escHtml(addr.ip)}</span>
+                    <span class="addr-mac">${escHtml(addr.mac || '-')}</span>
+                </div>
+                <button class="btn btn-sm btn-danger addr-delete-btn" data-id="${addr.id}">&times;</button>
+            `;
+            list.appendChild(div);
+        });
+        list.querySelectorAll('.addr-delete-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                await fetch(`/addresses/${btn.dataset.id}`, { method: 'DELETE' });
+                loadAddresses();
+            });
+        });
+    }
+
+    document.getElementById('addAddressBtn').addEventListener('click', async () => {
+        const name = document.getElementById('addrName').value.trim();
+        const ip = document.getElementById('addrIp').value.trim();
+        const mac = document.getElementById('addrMac').value.trim();
+        if (!ip) { alert('IP address is required.'); return; }
+        try {
+            await fetch('/addresses', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, ip, mac })
+            });
+            document.getElementById('addrName').value = '';
+            document.getElementById('addrIp').value = '';
+            document.getElementById('addrMac').value = '';
+            loadAddresses();
+        } catch (err) {
+            alert(`Error: ${err.message}`);
+        }
+    });
+
+    // Address picker dropdown
+    function showAddressDropdown(targetType, anchorEl) {
+        closeAddressDropdown();
+        if (!addressBookCache.length) return;
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'addr-dropdown';
+        dropdown.id = 'activeAddrDropdown';
+
+        addressBookCache.forEach(addr => {
+            const item = document.createElement('div');
+            item.className = 'addr-dropdown-item';
+            item.innerHTML = `
+                <span class="addr-drop-name">${escHtml(addr.name || 'Unnamed')}</span>
+                <span class="addr-drop-detail">${escHtml(addr.ip)}${addr.mac ? ' / ' + escHtml(addr.mac) : ''}</span>
+            `;
+            item.addEventListener('click', () => {
+                applyAddressPick(targetType, addr);
+                closeAddressDropdown();
+            });
+            dropdown.appendChild(item);
+        });
+
+        const rect = anchorEl.getBoundingClientRect();
+        dropdown.style.top = `${rect.bottom + 2}px`;
+        dropdown.style.left = `${rect.left}px`;
+        document.body.appendChild(dropdown);
+
+        setTimeout(() => {
+            document.addEventListener('click', onDropdownOutsideClick);
+        }, 0);
+    }
+
+    function applyAddressPick(targetType, addr) {
+        if (targetType === 'src') {
+            const el = document.getElementById('genSrcIp');
+            el.value = addr.ip;
+            el.dataset.mac = addr.mac || '';
+        } else if (targetType === 'dst') {
+            const el = document.getElementById('genDstIp');
+            el.value = addr.ip;
+            el.dataset.mac = addr.mac || '';
+        } else if (targetType === 'c2') {
+            document.getElementById('genC2Host').value = addr.ip;
+        } else if (targetType.startsWith('rewrite_ip_')) {
+            const origIp = targetType.replace('rewrite_ip_', '');
+            const input = rewriteHostsBody.querySelector(
+                `.rewrite-input[data-field="new_ip"][data-orig-ip="${origIp}"]`
+            );
+            if (input) input.value = addr.ip;
+        } else if (targetType.startsWith('rewrite_mac_')) {
+            const origMac = targetType.replace('rewrite_mac_', '');
+            const input = rewriteHostsBody.querySelector(
+                `.rewrite-input[data-field="new_mac"][data-orig-mac="${origMac}"]`
+            );
+            if (input) input.value = addr.mac || '';
+        }
+    }
+
+    function closeAddressDropdown() {
+        const existing = document.getElementById('activeAddrDropdown');
+        if (existing) existing.remove();
+        document.removeEventListener('click', onDropdownOutsideClick);
+    }
+
+    function onDropdownOutsideClick(e) {
+        const dropdown = document.getElementById('activeAddrDropdown');
+        if (dropdown && !dropdown.contains(e.target)) {
+            closeAddressDropdown();
+        }
+    }
+
+    // Wire up generator settings picker buttons
+    document.querySelectorAll('.addr-pick-btn:not(.rewrite-addr-pick)').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showAddressDropdown(btn.dataset.target, btn);
+        });
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
     // UTILITIES
     // ═══════════════════════════════════════════════════════════════════
 
@@ -802,5 +967,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // ═══════════════════════════════════════════════════════════════════
 
     loadProfiles();
+    loadAddresses();
 
 });
