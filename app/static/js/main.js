@@ -13,10 +13,27 @@ document.addEventListener('DOMContentLoaded', () => {
     let statusEventSource = null;
 
     // ═══════════════════════════════════════════════════════════════════
-    // TAB NAVIGATION
+    // SIDEBAR TOGGLE
     // ═══════════════════════════════════════════════════════════════════
 
-    const tabs = document.querySelectorAll('.tab');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarToggle = document.getElementById('sidebarToggle');
+
+    // Restore collapse state
+    if (localStorage.getItem('sidebar-collapsed') === 'true') {
+        sidebar.classList.add('collapsed');
+    }
+
+    sidebarToggle.addEventListener('click', () => {
+        sidebar.classList.toggle('collapsed');
+        localStorage.setItem('sidebar-collapsed', sidebar.classList.contains('collapsed'));
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TAB / PANE NAVIGATION
+    // ═══════════════════════════════════════════════════════════════════
+
+    const tabs = document.querySelectorAll('.nav-item');
     const panes = document.querySelectorAll('.tab-pane');
 
     function switchTab(tabId) {
