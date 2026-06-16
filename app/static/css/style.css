@@ -1,0 +1,180 @@
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+@keyframes flicker {
+    0%, 100% { opacity: 1; text-shadow: 0 0 5px #0AF8F8, 0 0 10px #0AF8F8; }
+    50% { opacity: 0.8; text-shadow: 0 0 5px #0AF8F8; }
+}
+@keyframes subtle-glow {
+    0%, 100% { box-shadow: 0 0 4px #0AF8F833; }
+    50% { box-shadow: 0 0 8px #0AF8F866; }
+}
+@keyframes flicker-red {
+    0%, 100% { opacity: 1; text-shadow: 0 0 5px #F000B8, 0 0 10px #F000B8; }
+    50% { opacity: 0.8; text-shadow: 0 0 5px #F000B8; }
+}
+
+body { 
+    font-family: 'Share Tech Mono', monospace;
+    background-color: #02000c;
+    background-image: 
+        linear-gradient(rgba(2,0,12,0.9), rgba(2,0,12,0.9)),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cg fill='%230AF8F8' fill-opacity='0.05'%3E%3Cpath d='M0 0h20v1H0zM0 2h20v1H0zM0 4h20v1H0zM0 6h20v1H0zM0 8h20v1H0zM0 10h20v1H0zM0 12h20v1H0zM0 14h20v1H0zM0 16h20v1H0zM0 18h20v1H0z'/%3E%3C/g%3E%3C/svg%3E");
+    color: #E0E0E0;
+}
+
+.cp-container {
+    background: #0A001A99;
+    border: 1px solid #0AF8F855;
+    box-shadow: inset 0 0 20px #0AF8F833;
+}
+
+.cp-header { animation: flicker 3s infinite; }
+
+.form-input, select {
+    background-color: #1a1a2a; 
+    border: 1px solid #33334a; 
+    color: #d1d5db;
+    transition: all 0.2s ease-in-out;
+    border-radius: 0;
+}
+
+.form-input:focus, select:focus {
+    background-color: #2a2a3a; 
+    border-color: #0AF8F8;
+    box-shadow: none; 
+    outline: none;
+    color: #0AF8F8;
+}
+
+.form-input.invalid {
+    border-color: #F000B8;
+    color: #F000B8;
+}
+
+.section-header {
+    color: #0AF8F8; font-weight: 700; letter-spacing: 0.1em;
+    text-shadow: 0 0 3px #0AF8F8;
+}
+
+.tab {
+    padding: 0.75rem 1.5rem; border: 1px solid transparent; border-bottom: none;
+    color: #005959; font-weight: 700; transition: all 0.2s;
+    cursor: pointer;
+}
+
+.tab.active {
+    color: #0AF8F8; background-color: #0AF8F811;
+    border-color: #0AF8F855;
+}
+
+.cp-button {
+    background-color: #0AF8F822; color: #0AF8F8;
+    border: 1px solid #0AF8F888;
+    padding: 0.5rem 1rem; font-weight: 700;
+    transition: all 0.2s;
+    border-radius: 0;
+    cursor: pointer;
+}
+
+.cp-button:hover { background-color: #0AF8F844; }
+
+.add-map-btn {
+    animation: subtle-glow 2s infinite;
+}
+
+.submit-btn {
+     background: #0AF8F8;
+     text-shadow: 0 0 5px #000; color: #000;
+}
+
+.submit-btn:hover { background: #65FFFF; }
+.submit-btn:disabled { background: #333; color: #666; border-color: #444; cursor: not-allowed;}
+
+.abort-btn {
+    background-color: #F000B844; border-color: #F000B8; color: #F000B8;
+}
+
+.abort-btn:hover { background-color: #F000B866; }
+
+.discovered-list {
+    padding-right: 1rem;
+}
+
+#packetViewer table, #discoveredHostsTable table {
+    table-layout: fixed;
+}
+
+#packetViewer td, #packetViewer th, #discoveredHostsTable td, #discoveredHostsTable th {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.adversary-tag {
+    color: #F000B8;
+    font-weight: 700;
+    font-size: 0.7rem;
+    margin-left: 8px;
+    animation: flicker-red 1.5s infinite;
+}
+
+.add-host-btn {
+    font-weight: 700;
+    color: #0AF8F8;
+    font-size: 1.25rem;
+    cursor: pointer;
+    transition: all 0.1s;
+}
+
+.add-host-btn:hover {
+    color: #65FFFF;
+    text-shadow: 0 0 5px #0AF8F8;
+}
+
+/* Packet Viewer Enhancements */
+.packet-row:hover {
+    background-color: #0AF8F822;
+    cursor: pointer;
+}
+
+.packet-row.selected {
+    background-color: #0AF8F844;
+    border-left: 2px solid #0AF8F8;
+}
+
+.detail-tree {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.9rem;
+}
+
+.detail-item {
+    margin-left: 1rem;
+    padding: 2px 0;
+}
+
+.detail-header {
+    font-weight: bold;
+    color: #0AF8F8;
+    cursor: pointer;
+}
+
+.context-menu {
+    position: absolute;
+    background: #0A001A;
+    border: 1px solid #0AF8F8;
+    box-shadow: 0 0 10px #0AF8F833;
+    z-index: 1000;
+    display: none;
+}
+
+.context-menu-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    color: #E0E0E0;
+    font-size: 0.9rem;
+}
+
+.context-menu-item:hover {
+    background-color: #0AF8F822;
+    color: #0AF8F8;
+}
