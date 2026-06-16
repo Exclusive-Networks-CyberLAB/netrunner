@@ -56,6 +56,71 @@ document.addEventListener('DOMContentLoaded', function () {
     let currentConversations = [];
     let selectedPacket = null;
 
+    // Sort state for statistics tables. Default to the most useful view:
+    // conversations by longest duration, endpoints by busiest (total packets).
+    let endpointSort = { key: 'packets', dir: 'desc' };
+    let conversationSort = { key: 'duration', dir: 'desc' };
+
+    // Format a raw byte count into a human-readable string (like Wireshark).
+    function formatBytes(bytes) {
+        if (bytes === null || bytes === undefined) return '0 B';
+        if (bytes < 1024) return `${bytes} B`;
+        const units = ['KB', 'MB', 'GB', 'TB'];
+        let val = bytes / 1024;
+        let i = 0;
+        while (val >= 1024 && i < units.length - 1) { val /= 1024; i++; }
+        return `${val.toFixed(2)} ${units[i]}`;
+    }
+
+    // Generic sorter: numeric compare for numbers, locale compare for strings.
+    function sortRows(rows, key, dir) {
+        const sorted = [...rows].sort((a, b) => {
+            const va = a[key], vb = b[key];
+            let cmp;
+            if (typeof va === 'number' && typeof vb === 'number') {
+                cmp = va - vb;
+            } else {
+                cmp = String(va).localeCompare(String(vb), undefined, { numeric: true });
+            }
+            return dir === 'asc' ? cmp : -cmp;
+        });
+        return sorted;
+    }
+
+    // Reflect the active sort key/direction in a table's header arrows.
+    function updateSortIndicators(tableId, sortState) {
+        const table = document.getElementById(tableId);
+        if (!table) return;
+        table.querySelectorAll('th.sortable').forEach(th => {
+            const arrow = th.querySelector('.sort-arrow');
+            if (th.dataset.sortKey === sortState.key) {
+                th.classList.add('sort-active');
+                if (arrow) arrow.textContent = sortState.dir === 'asc' ? '▲' : '▼';
+            } else {
+                th.classList.remove('sort-active');
+                if (arrow) arrow.textContent = '';
+            }
+        });
+    }
+
+    // Wire up click-to-sort on a table's headers.
+    function makeSortable(tableId, sortState, rerender) {
+        const table = document.getElementById(tableId);
+        if (!table) return;
+        table.querySelectorAll('th.sortable').forEach(th => {
+            th.addEventListener('click', () => {
+                const key = th.dataset.sortKey;
+                if (sortState.key === key) {
+                    sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    sortState.key = key;
+                    sortState.dir = 'desc';
+                }
+                rerender();
+            });
+        });
+    }
+
     // View Switching
     if (viewerModeSelect) {
         viewerModeSelect.addEventListener('change', () => {
@@ -509,37 +574,68 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function renderEndpoints(endpoints) {
         endpointsBody.innerHTML = '';
-        endpoints.forEach(ep => {
+        // Derive total packets/bytes so they can be sorted on directly.
+        const rows = endpoints.map(ep => ({
+            ...ep,
+            packets: ep.tx_pkts + ep.rx_pkts,
+            bytes: ep.tx_bytes + ep.rx_bytes
+        }));
+        const sorted = sortRows(rows, endpointSort.key, endpointSort.dir);
+        sorted.forEach(ep => {
             const row = document.createElement('tr');
             row.className = 'border-t border-cyan-900/50 hover:bg-cyan-900/20 cursor-pointer';
             row.innerHTML = `
-                <td class="p-2">${ep.ip}</td>
+                <td class="p-2">${escapeHTML(ep.ip)}</td>
+                <td class="p-2">${ep.packets}</td>
+                <td class="p-2">${formatBytes(ep.bytes)}</td>
                 <td class="p-2">${ep.tx_pkts}</td>
                 <td class="p-2">${ep.rx_pkts}</td>
-                <td class="p-2">${ep.tx_bytes}</td>
-                <td class="p-2">${ep.rx_bytes}</td>
+                <td class="p-2">${formatBytes(ep.tx_bytes)}</td>
+                <td class="p-2">${formatBytes(ep.rx_bytes)}</td>
             `;
             // Reuse context menu for quick rewriting
             row.addEventListener('contextmenu', (e) => showContextMenu(e, { src: ep.ip, dst: ep.ip }));
             endpointsBody.appendChild(row);
         });
+        updateSortIndicators('endpointsTable', endpointSort);
     }
 
     function renderConversations(conversations) {
         conversationsBody.innerHTML = '';
-        conversations.forEach(conv => {
+
+        // Identify the longest conversation by duration regardless of current sort.
+        const summaryEl = document.getElementById('conversationSummary');
+        let longest = null;
+        conversations.forEach(c => {
+            if (!longest || c.duration > longest.duration) longest = c;
+        });
+        if (summaryEl) {
+            if (longest && longest.duration > 0) {
+                summaryEl.innerHTML = `// Longest conversation: <strong>${escapeHTML(longest.ip_a)} &lt;-&gt; ${escapeHTML(longest.ip_b)}</strong> &mdash; ${longest.duration.toFixed(4)} s, ${longest.pkts} packets, ${formatBytes(longest.bytes)}`;
+                summaryEl.classList.remove('hidden');
+            } else {
+                summaryEl.classList.add('hidden');
+            }
+        }
+
+        const sorted = sortRows(conversations, conversationSort.key, conversationSort.dir);
+        sorted.forEach(conv => {
             const row = document.createElement('tr');
             row.className = 'border-t border-cyan-900/50 hover:bg-cyan-900/20 cursor-pointer';
+            const isLongest = longest && conv === longest && conv.duration > 0;
+            if (isLongest) row.classList.add('longest-convo');
+            const badge = isLongest ? ' <span class="longest-badge">// LONGEST</span>' : '';
             row.innerHTML = `
-                <td class="p-2">${conv.ip_a}</td>
-                <td class="p-2">${conv.ip_b}</td>
+                <td class="p-2">${escapeHTML(conv.ip_a)}</td>
+                <td class="p-2">${escapeHTML(conv.ip_b)}</td>
                 <td class="p-2">${conv.pkts}</td>
-                <td class="p-2">${conv.bytes}</td>
-                <td class="p-2">${conv.duration.toFixed(4)}</td>
+                <td class="p-2">${formatBytes(conv.bytes)}</td>
+                <td class="p-2">${conv.duration.toFixed(4)}${badge}</td>
             `;
             row.addEventListener('contextmenu', (e) => showContextMenu(e, { src: conv.ip_a, dst: conv.ip_b }));
             conversationsBody.appendChild(row);
         });
+        updateSortIndicators('conversationsTable', conversationSort);
     }
 
     // Export/Import Handlers
@@ -764,6 +860,9 @@ document.addEventListener('DOMContentLoaded', function () {
         generatorForm.querySelector('button[type="submit"]').textContent = 'Generate Traffic';
         stopBtn.disabled = true; stopBtn.textContent = 'Abort';
     }
+
+    makeSortable('endpointsTable', endpointSort, () => renderEndpoints(currentEndpoints));
+    makeSortable('conversationsTable', conversationSort, () => renderConversations(currentConversations));
 
     initChart();
     switchTab('replayer');

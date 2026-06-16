@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 
-<body class="text-gray-300 flex items-center justify-center min-h-screen py-12">
+<body class="flex items-center justify-center min-h-screen py-12">
     <div class="w-full max-w-7xl mx-auto p-4">
         <div class="cp-container p-6 md:p-8">
             <div class="text-center mb-8">
@@ -26,7 +26,7 @@
             <!-- Asset Manager -->
             <div class="mb-8">
                 <h2 class="section-header mb-4">Asset Manager</h2>
-                <div class="bg-black/50 p-4 border border-cyan-900/50">
+                <div class="cp-panel">
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                         <div class="md:col-span-1">
                             <label for="assetName" class="block text-xs font-semibold text-cyan-300 mb-1">// Asset
@@ -91,7 +91,7 @@
                                 [ View Detailed Statistics ]
                             </button>
                         </div>
-                        <div class="bg-black/50 p-4 border border-cyan-900/50 max-h-48 overflow-y-auto">
+                        <div class="cp-panel max-h-48 overflow-y-auto">
                             <table class="w-full text-left text-sm">
                                 <thead class="text-cyan-300">
                                     <tr>
@@ -160,7 +160,7 @@
                     <!-- Configuration Management -->
                     <div class="mt-8">
                         <h2 class="section-header">Configuration Management</h2>
-                        <div class="bg-black/50 p-4 border border-cyan-900/50">
+                        <div class="cp-panel">
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                                 <div>
                                     <label for="configName" class="block text-xs font-semibold text-cyan-300 mb-1">//
@@ -212,7 +212,7 @@
 
                 <div id="packetViewer" class="hidden flex flex-col h-[80vh]">
                     <!-- Top Pane: Packet List -->
-                    <div class="flex justify-between items-center mb-2 px-1 bg-black/40 p-2 border border-cyan-900/30">
+                    <div class="flex justify-between items-center mb-2 px-1 cp-panel p-2">
                         <h2 class="section-header">// Packet Viewer //</h2>
                         <div class="flex items-center space-x-2">
                             <label for="viewerModeSelect"
@@ -227,16 +227,15 @@
                     </div>
 
                     <!-- Packet List Table -->
-                    <div id="packetListView"
-                        class="flex-1 overflow-y-auto border border-cyan-900/50 bg-black/50 mb-4 relative">
+                    <div id="packetListView" class="flex-1 overflow-y-auto cp-panel mb-4 relative p-0">
                         <table class="w-full text-left text-xs relative">
                             <thead class="text-cyan-300 sticky top-0 bg-black z-10 shadow-lg shadow-cyan-900/20">
                                 <tr>
-                                    <th class="p-2 w-16 bg-black">No.</th>
-                                    <th class="p-2 bg-black">Source</th>
-                                    <th class="p-2 bg-black">Destination</th>
-                                    <th class="p-2 w-20 bg-black">Protocol</th>
-                                    <th class="p-2 bg-black">Info</th>
+                                    <th class="p-2 w-16">No.</th>
+                                    <th class="p-2">Source</th>
+                                    <th class="p-2">Destination</th>
+                                    <th class="p-2 w-20">Protocol</th>
+                                    <th class="p-2">Info</th>
                                 </tr>
                             </thead>
                             <tbody id="packetViewerBody" class="text-gray-300">
@@ -246,16 +245,17 @@
                     </div>
 
                     <!-- Endpoints Table -->
-                    <div id="endpointsView"
-                        class="hidden flex-1 overflow-y-auto border border-cyan-900/50 bg-black/50 mb-4 relative">
-                        <table class="w-full text-left text-xs relative">
+                    <div id="endpointsView" class="hidden flex-1 overflow-y-auto cp-panel mb-4 relative p-0">
+                        <table id="endpointsTable" class="w-full text-left text-xs relative">
                             <thead class="text-cyan-300 sticky top-0 bg-black z-10 shadow-lg shadow-cyan-900/20">
                                 <tr>
-                                    <th class="p-2 bg-black">IP Address</th>
-                                    <th class="p-2 bg-black">Tx Packets</th>
-                                    <th class="p-2 bg-black">Rx Packets</th>
-                                    <th class="p-2 bg-black">Tx Bytes</th>
-                                    <th class="p-2 bg-black">Rx Bytes</th>
+                                    <th class="p-2 sortable" data-sort-key="ip">IP Address <span class="sort-arrow"></span></th>
+                                    <th class="p-2 sortable" data-sort-key="packets">Packets <span class="sort-arrow"></span></th>
+                                    <th class="p-2 sortable" data-sort-key="bytes">Bytes <span class="sort-arrow"></span></th>
+                                    <th class="p-2 sortable" data-sort-key="tx_pkts">Tx Pkts <span class="sort-arrow"></span></th>
+                                    <th class="p-2 sortable" data-sort-key="rx_pkts">Rx Pkts <span class="sort-arrow"></span></th>
+                                    <th class="p-2 sortable" data-sort-key="tx_bytes">Tx Bytes <span class="sort-arrow"></span></th>
+                                    <th class="p-2 sortable" data-sort-key="rx_bytes">Rx Bytes <span class="sort-arrow"></span></th>
                                 </tr>
                             </thead>
                             <tbody id="endpointsBody" class="text-gray-300"></tbody>
@@ -263,16 +263,16 @@
                     </div>
 
                     <!-- Conversations Table -->
-                    <div id="conversationsView"
-                        class="hidden flex-1 overflow-y-auto border border-cyan-900/50 bg-black/50 mb-4 relative">
-                        <table class="w-full text-left text-xs relative">
+                    <div id="conversationsView" class="hidden flex-1 overflow-y-auto cp-panel mb-4 relative p-0">
+                        <div id="conversationSummary" class="convo-summary hidden"></div>
+                        <table id="conversationsTable" class="w-full text-left text-xs relative">
                             <thead class="text-cyan-300 sticky top-0 bg-black z-10 shadow-lg shadow-cyan-900/20">
                                 <tr>
-                                    <th class="p-2 bg-black">Address A</th>
-                                    <th class="p-2 bg-black">Address B</th>
-                                    <th class="p-2 bg-black">Packets</th>
-                                    <th class="p-2 bg-black">Bytes</th>
-                                    <th class="p-2 bg-black">Duration (s)</th>
+                                    <th class="p-2 sortable" data-sort-key="ip_a">Address A <span class="sort-arrow"></span></th>
+                                    <th class="p-2 sortable" data-sort-key="ip_b">Address B <span class="sort-arrow"></span></th>
+                                    <th class="p-2 sortable" data-sort-key="pkts">Packets <span class="sort-arrow"></span></th>
+                                    <th class="p-2 sortable" data-sort-key="bytes">Bytes <span class="sort-arrow"></span></th>
+                                    <th class="p-2 sortable" data-sort-key="duration">Duration (s) <span class="sort-arrow"></span></th>
                                 </tr>
                             </thead>
                             <tbody id="conversationsBody" class="text-gray-300"></tbody>
@@ -280,7 +280,7 @@
                     </div>
 
                     <!-- Bottom Pane: Packet Details -->
-                    <div id="packetDetailsPane" class="h-1/3 border border-cyan-900/50 bg-black/50 p-4 overflow-y-auto">
+                    <div id="packetDetailsPane" class="h-1/3 cp-panel overflow-y-auto">
                         <h3 class="text-cyan-300 font-bold mb-2 text-sm border-b border-cyan-900/50 pb-1">Packet Details
                         </h3>
                         <div id="packetDetails" class="detail-tree text-gray-300">
@@ -371,7 +371,7 @@
 
             <!-- Shared Status Display -->
             <div id="statusContainer" class="mt-10 hidden">
-                <div class="p-4 bg-black/50 border border-cyan-900/50">
+                <div class="cp-panel">
                     <div class="flex justify-between items-center mb-3">
                         <h3 id="statusTitle" class="section-header">Task Status</h3>
                         <button id="stopBtn"
@@ -408,7 +408,7 @@
         <div class="context-menu-item" id="ctxRewriteDstMac">Rewrite Dest MAC</div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/main.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}?v=3"></script>
 </body>
 
 </html>

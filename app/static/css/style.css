@@ -1,180 +1,407 @@
 @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&display=swap');
+
+:root {
+    --bg-color: #000000;
+    --card-bg: #050505;
+    --text-main: #e0e0e0;
+    --text-muted: #a0a0a0;
+
+    --neon-cyan: #00f3ff;
+    --neon-pink: #ff00ff;
+    --neon-purple: #bc13fe;
+
+    --border-color: #333;
+    --input-bg: #0a0a0a;
+}
 
 @keyframes flicker {
-    0%, 100% { opacity: 1; text-shadow: 0 0 5px #0AF8F8, 0 0 10px #0AF8F8; }
-    50% { opacity: 0.8; text-shadow: 0 0 5px #0AF8F8; }
-}
-@keyframes subtle-glow {
-    0%, 100% { box-shadow: 0 0 4px #0AF8F833; }
-    50% { box-shadow: 0 0 8px #0AF8F866; }
-}
-@keyframes flicker-red {
-    0%, 100% { opacity: 1; text-shadow: 0 0 5px #F000B8, 0 0 10px #F000B8; }
-    50% { opacity: 0.8; text-shadow: 0 0 5px #F000B8; }
+
+    0%,
+    100% {
+        opacity: 1;
+        text-shadow: 0 0 5px var(--neon-cyan), 0 0 10px var(--neon-cyan);
+    }
+
+    50% {
+        opacity: 0.8;
+        text-shadow: 0 0 2px var(--neon-cyan);
+    }
 }
 
-body { 
-    font-family: 'Share Tech Mono', monospace;
-    background-color: #02000c;
-    background-image: 
-        linear-gradient(rgba(2,0,12,0.9), rgba(2,0,12,0.9)),
-        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cg fill='%230AF8F8' fill-opacity='0.05'%3E%3Cpath d='M0 0h20v1H0zM0 2h20v1H0zM0 4h20v1H0zM0 6h20v1H0zM0 8h20v1H0zM0 10h20v1H0zM0 12h20v1H0zM0 14h20v1H0zM0 16h20v1H0zM0 18h20v1H0z'/%3E%3C/g%3E%3C/svg%3E");
-    color: #E0E0E0;
+@keyframes pulse-border {
+
+    0%,
+    100% {
+        border-color: var(--neon-cyan);
+        box-shadow: 0 0 5px var(--neon-cyan);
+    }
+
+    50% {
+        border-color: var(--neon-purple);
+        box-shadow: 0 0 10px var(--neon-purple);
+    }
+}
+
+@keyframes scanline {
+    0% {
+        transform: translateY(-100%);
+    }
+
+    100% {
+        transform: translateY(100%);
+    }
+}
+
+body {
+    font-family: 'Rajdhani', 'Share Tech Mono', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    overflow-x: hidden;
+    min-height: 100vh;
+}
+
+/* Scanline effect overlay */
+body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0) 50%, rgba(0, 0, 0, 0.1) 50%, rgba(0, 0, 0, 0.1));
+    background-size: 100% 4px;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.3;
 }
 
 .cp-container {
-    background: #0A001A99;
-    border: 1px solid #0AF8F855;
-    box-shadow: inset 0 0 20px #0AF8F833;
+    background: var(--card-bg);
+    border: 1px solid var(--neon-cyan);
+    box-shadow: 0 0 15px rgba(0, 243, 255, 0.1);
+    position: relative;
 }
 
-.cp-header { animation: flicker 3s infinite; }
-
-.form-input, select {
-    background-color: #1a1a2a; 
-    border: 1px solid #33334a; 
-    color: #d1d5db;
-    transition: all 0.2s ease-in-out;
-    border-radius: 0;
+.cp-container::after {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    right: -1px;
+    bottom: -1px;
+    background: linear-gradient(45deg, var(--neon-cyan), transparent, var(--neon-pink));
+    z-index: -1;
+    opacity: 0.3;
+    filter: blur(10px);
 }
 
-.form-input:focus, select:focus {
-    background-color: #2a2a3a; 
-    border-color: #0AF8F8;
-    box-shadow: none; 
-    outline: none;
-    color: #0AF8F8;
+.cp-panel {
+    background-color: rgba(10, 10, 10, 0.8);
+    border: 1px solid rgba(0, 243, 255, 0.3);
+    padding: 1rem;
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(5px);
 }
 
-.form-input.invalid {
-    border-color: #F000B8;
-    color: #F000B8;
+.cp-header {
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 10px var(--neon-cyan);
+    letter-spacing: 2px;
 }
 
 .section-header {
-    color: #0AF8F8; font-weight: 700; letter-spacing: 0.1em;
-    text-shadow: 0 0 3px #0AF8F8;
+    color: var(--neon-cyan);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--neon-cyan);
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+    display: inline-block;
+    text-shadow: 0 0 5px rgba(0, 243, 255, 0.5);
 }
 
+/* Forms */
+.form-input,
+select {
+    background-color: var(--input-bg);
+    border: 1px solid #333;
+    color: var(--text-main);
+    transition: all 0.3s ease;
+    border-radius: 2px;
+    font-family: 'Share Tech Mono', monospace;
+}
+
+.form-input:focus,
+select:focus {
+    background-color: #0f0f0f;
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 8px rgba(0, 243, 255, 0.3);
+    outline: none;
+    color: #fff;
+}
+
+.form-input::placeholder {
+    color: #555;
+}
+
+/* Tabs */
 .tab {
-    padding: 0.75rem 1.5rem; border: 1px solid transparent; border-bottom: none;
-    color: #005959; font-weight: 700; transition: all 0.2s;
+    padding: 0.75rem 1.5rem;
+    border: 1px solid transparent;
+    border-bottom: none;
+    color: var(--text-muted);
+    font-weight: 600;
+    transition: all 0.3s;
     cursor: pointer;
+    background: transparent;
+    font-family: 'Share Tech Mono', monospace;
+}
+
+.tab:hover {
+    color: var(--neon-cyan);
+    text-shadow: 0 0 5px var(--neon-cyan);
 }
 
 .tab.active {
-    color: #0AF8F8; background-color: #0AF8F811;
-    border-color: #0AF8F855;
+    color: var(--bg-color);
+    background-color: var(--neon-cyan);
+    box-shadow: 0 0 15px var(--neon-cyan);
+    border-color: var(--neon-cyan);
 }
 
+/* Buttons */
 .cp-button {
-    background-color: #0AF8F822; color: #0AF8F8;
-    border: 1px solid #0AF8F888;
-    padding: 0.5rem 1rem; font-weight: 700;
-    transition: all 0.2s;
-    border-radius: 0;
+    background-color: transparent;
+    color: var(--neon-cyan);
+    border: 1px solid var(--neon-cyan);
+    padding: 0.5rem 1.2rem;
+    font-weight: 700;
+    transition: all 0.3s;
+    border-radius: 2px;
     cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    position: relative;
+    overflow: hidden;
 }
 
-.cp-button:hover { background-color: #0AF8F844; }
-
-.add-map-btn {
-    animation: subtle-glow 2s infinite;
+.cp-button:hover {
+    background-color: var(--neon-cyan);
+    color: #000;
+    box-shadow: 0 0 15px var(--neon-cyan);
 }
 
 .submit-btn {
-     background: #0AF8F8;
-     text-shadow: 0 0 5px #000; color: #000;
+    background: rgba(0, 243, 255, 0.1);
+    border: 1px solid var(--neon-cyan);
+    color: var(--neon-cyan);
 }
 
-.submit-btn:hover { background: #65FFFF; }
-.submit-btn:disabled { background: #333; color: #666; border-color: #444; cursor: not-allowed;}
+.submit-btn:hover {
+    background: var(--neon-cyan);
+    color: #000;
+    box-shadow: 0 0 20px var(--neon-cyan);
+}
 
 .abort-btn {
-    background-color: #F000B844; border-color: #F000B8; color: #F000B8;
+    border-color: var(--neon-pink);
+    color: var(--neon-pink);
 }
 
-.abort-btn:hover { background-color: #F000B866; }
-
-.discovered-list {
-    padding-right: 1rem;
+.abort-btn:hover {
+    background-color: var(--neon-pink);
+    color: #000;
+    box-shadow: 0 0 15px var(--neon-pink);
 }
 
-#packetViewer table, #discoveredHostsTable table {
-    table-layout: fixed;
+/* Tables */
+table {
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
 }
 
-#packetViewer td, #packetViewer th, #discoveredHostsTable td, #discoveredHostsTable th {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+th {
+    background-color: #111;
+    color: var(--neon-cyan);
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 1px;
+    border-bottom: 1px solid #333;
+    padding: 10px;
 }
 
-.adversary-tag {
-    color: #F000B8;
+td {
+    border-bottom: 1px solid #222;
+    padding: 8px;
+    color: var(--text-muted);
+    font-family: 'Share Tech Mono', monospace;
+}
+
+tr:hover td {
+    color: #fff;
+    background-color: rgba(0, 243, 255, 0.05);
+}
+
+/* Sortable table headers */
+th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.2s, background-color 0.2s;
+}
+
+th.sortable:hover {
+    color: #fff;
+    background-color: #1a1a1a;
+    text-shadow: 0 0 6px var(--neon-cyan);
+}
+
+th.sortable .sort-arrow {
+    display: inline-block;
+    width: 1em;
+    color: var(--neon-pink);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+th.sortable.sort-active .sort-arrow {
+    opacity: 1;
+}
+
+/* Longest / top conversation highlight */
+tr.longest-convo td {
+    background-color: rgba(188, 19, 254, 0.12);
+    border-bottom: 1px solid var(--neon-purple);
+    color: #fff;
+}
+
+tr.longest-convo td:first-child {
+    border-left: 3px solid var(--neon-purple);
+}
+
+.longest-badge {
+    color: var(--neon-purple);
     font-weight: 700;
     font-size: 0.7rem;
-    margin-left: 8px;
-    animation: flicker-red 1.5s infinite;
+    letter-spacing: 1px;
+    text-shadow: 0 0 5px var(--neon-purple);
+    margin-left: 6px;
 }
 
-.add-host-btn {
-    font-weight: 700;
-    color: #0AF8F8;
-    font-size: 1.25rem;
-    cursor: pointer;
-    transition: all 0.1s;
+.convo-summary {
+    border: 1px solid var(--neon-purple);
+    background: rgba(188, 19, 254, 0.08);
+    color: #f0d4ff;
+    padding: 8px 12px;
+    margin-bottom: 0.75rem;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.8rem;
+    box-shadow: 0 0 10px rgba(188, 19, 254, 0.2);
 }
 
-.add-host-btn:hover {
-    color: #65FFFF;
-    text-shadow: 0 0 5px #0AF8F8;
+.convo-summary strong {
+    color: var(--neon-purple);
+    text-shadow: 0 0 5px var(--neon-purple);
 }
 
-/* Packet Viewer Enhancements */
-.packet-row:hover {
-    background-color: #0AF8F822;
-    cursor: pointer;
-}
-
+/* Packet Viewer */
 .packet-row.selected {
-    background-color: #0AF8F844;
-    border-left: 2px solid #0AF8F8;
+    background-color: rgba(0, 243, 255, 0.15) !important;
+    border-left: 3px solid var(--neon-cyan);
 }
 
 .detail-tree {
     font-family: 'Share Tech Mono', monospace;
     font-size: 0.9rem;
-}
-
-.detail-item {
-    margin-left: 1rem;
-    padding: 2px 0;
+    color: var(--text-muted);
 }
 
 .detail-header {
+    color: var(--neon-purple);
     font-weight: bold;
-    color: #0AF8F8;
-    cursor: pointer;
 }
 
-.context-menu {
-    position: absolute;
-    background: #0A001A;
-    border: 1px solid #0AF8F8;
-    box-shadow: 0 0 10px #0AF8F833;
-    z-index: 1000;
-    display: none;
+/* Scrollbars */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
 }
 
-.context-menu-item {
-    padding: 8px 12px;
-    cursor: pointer;
-    color: #E0E0E0;
-    font-size: 0.9rem;
+::-webkit-scrollbar-track {
+    background: #050505;
 }
 
-.context-menu-item:hover {
-    background-color: #0AF8F822;
-    color: #0AF8F8;
+::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--neon-cyan);
+}
+
+/* Utilities */
+.text-neon-cyan {
+    color: var(--neon-cyan);
+}
+
+.text-neon-pink {
+    color: var(--neon-pink);
+}
+
+.border-neon-cyan {
+    border-color: var(--neon-cyan);
+}
+
+.bg-black-translucent {
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+.adversary-tag {
+    color: var(--neon-pink);
+    font-weight: 700;
+    text-shadow: 0 0 5px var(--neon-pink);
+}
+
+/* Tailwind Overrides for Theme Consistency */
+.text-cyan-300,
+.text-cyan-400,
+.text-cyan-500 {
+    color: var(--neon-cyan) !important;
+    text-shadow: 0 0 5px rgba(0, 243, 255, 0.3);
+}
+
+.text-cyan-200 {
+    color: #ccfcff !important;
+}
+
+.text-cyan-700 {
+    color: rgba(0, 243, 255, 0.7) !important;
+}
+
+.bg-cyan-400 {
+    background-color: var(--neon-cyan) !important;
+    box-shadow: 0 0 10px var(--neon-cyan);
+}
+
+.border-cyan-900\/50,
+.border-cyan-900\/30 {
+    border-color: rgba(0, 243, 255, 0.3) !important;
+}
+
+.text-gray-300,
+.text-gray-400 {
+    color: var(--text-main) !important;
+}
+
+.text-gray-500 {
+    color: var(--text-muted) !important;
+}
+
+.bg-black\/50,
+.bg-black\/40 {
+    background-color: var(--card-bg) !important;
 }
