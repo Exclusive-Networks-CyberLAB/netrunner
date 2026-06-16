@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# App runtime artifacts
+uploads/
+*.db
+smoke_capture.pcap
+
+# OS
+.DS_Store
