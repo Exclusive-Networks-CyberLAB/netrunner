@@ -8,7 +8,7 @@
     <meta name="description" content="Network traffic simulation, PCAP replay, and analysis for NDR testing.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap"
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
@@ -19,7 +19,7 @@
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
                 <h1 class="sidebar-logo">NR</h1>
-                <span class="sidebar-logo-full">NetRunner OS</span>
+                <span class="sidebar-logo-full">NetRunner</span>
                 <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">☰</button>
             </div>
             <nav class="sidebar-nav">
@@ -45,7 +45,7 @@
                 </button>
             </nav>
             <div class="sidebar-footer">
-                <span class="sidebar-footer-text">// NET SIM v1.0 //</span>
+                <span class="sidebar-footer-text">Network Simulator v1.0</span>
             </div>
         </aside>
 
@@ -59,7 +59,7 @@
                 <!-- Upload Bar -->
                 <div class="upload-bar">
                     <div class="upload-group">
-                        <label for="pcapFile" class="upload-label">// SELECT PCAP FILE</label>
+                        <label for="pcapFile" class="upload-label">Select PCAP file</label>
                         <input type="file" id="pcapFile" accept=".pcap,.pcapng,.cap" class="file-input">
                     </div>
                     <button id="analyzeBtn" class="btn btn-primary" disabled>Analyze</button>
@@ -110,11 +110,11 @@
                         <svg id="flowSvg" class="flow-svg"></svg>
                     </div>
                     <div class="flow-legend">
-                        <span class="legend-item"><span class="legend-dot" style="background:#00f3ff"></span> TCP</span>
-                        <span class="legend-item"><span class="legend-dot" style="background:#bc13fe"></span> UDP</span>
-                        <span class="legend-item"><span class="legend-dot" style="background:#ff00ff"></span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#4f8cff"></span> TCP</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#a78bfa"></span> UDP</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#22d3ee"></span>
                             ICMP</span>
-                        <span class="legend-item"><span class="legend-dot" style="background:#ffcc00"></span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#fbbf24"></span>
                             Other</span>
                     </div>
                 </div>
@@ -169,7 +169,7 @@
                 <div id="rewriterContent" class="hidden">
                     <!-- Discovered Hosts -->
                     <section class="section">
-                        <h2 class="section-header">// Discovered Hosts</h2>
+                        <h2 class="section-header">Discovered Hosts</h2>
                         <div class="panel">
                             <table class="data-table compact">
                                 <thead>
@@ -189,7 +189,7 @@
 
                     <!-- Replay Settings -->
                     <section class="section">
-                        <h2 class="section-header">// Replay Settings</h2>
+                        <h2 class="section-header">Replay Settings</h2>
                         <div class="panel">
                             <div class="form-grid cols-4">
                                 <div class="form-group">
@@ -240,7 +240,7 @@
                     <!-- Replay Status -->
                     <div id="replayStatus" class="panel status-panel hidden">
                         <div class="status-header">
-                            <h3 class="section-header">// Replay Status</h3>
+                            <h3 class="section-header">Replay Status</h3>
                             <span id="replayPps" class="pps-badge">0 pps</span>
                         </div>
                         <div class="progress-bar">
@@ -261,7 +261,7 @@
             <div id="pane-generator" class="tab-pane">
                 <!-- Common Settings -->
                 <section class="section">
-                    <h2 class="section-header">// Generator Settings</h2>
+                    <h2 class="section-header">Generator Settings</h2>
                     <div class="panel">
                         <div class="form-grid cols-4">
                             <div class="form-group">
@@ -299,7 +299,7 @@
 
                 <!-- Protocol Templates -->
                 <section class="section">
-                    <h2 class="section-header">// Protocol Templates</h2>
+                    <h2 class="section-header">Protocol Templates</h2>
                     <div class="card-grid">
                         <div class="gen-card" data-type="protocol" data-proto="dns">
                             <div class="gen-card-icon">🌐</div>
@@ -386,7 +386,7 @@
 
                 <!-- Adversary Simulations -->
                 <section class="section">
-                    <h2 class="section-header">// Adversary Simulations</h2>
+                    <h2 class="section-header">Adversary Simulations</h2>
                     <div class="card-grid">
                         <div class="gen-card adversary" data-type="adversary" data-sim="c2_beacon">
                             <div class="gen-card-icon">🎯</div>
@@ -529,7 +529,7 @@
                 <!-- Generator Status -->
                 <div id="genStatus" class="panel status-panel hidden">
                     <div class="status-header">
-                        <h3 class="section-header">// Generator Status</h3>
+                        <h3 class="section-header">Generator Status</h3>
                         <span id="genPps" class="pps-badge">0 pps</span>
                     </div>
                     <div class="progress-bar">
@@ -545,7 +545,7 @@
             <!-- ═══════════════════════════════════════════════════════════════ -->
             <div id="pane-addressbook" class="tab-pane">
                 <section class="section">
-                    <h2 class="section-header">// Address Book</h2>
+                    <h2 class="section-header">Address Book</h2>
                     <div class="panel">
                         <div class="form-grid cols-4" style="margin-bottom: 1rem;">
                             <div class="form-group">
@@ -578,7 +578,7 @@
             <!-- ═══════════════════════════════════════════════════════════════ -->
             <div id="pane-profiles" class="tab-pane">
                 <section class="section">
-                    <h2 class="section-header">// Saved Profiles</h2>
+                    <h2 class="section-header">Saved Profiles</h2>
                     <div class="panel">
                         <div class="form-row" style="margin-bottom: 1rem;">
                             <input type="text" id="profileName" placeholder="Profile name..." class="form-input"

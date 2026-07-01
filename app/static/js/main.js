@@ -262,7 +262,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const summaryEl = document.getElementById('conversationSummary');
         if (summaryEl) {
             if (longest && Number(longest.duration) > 0) {
-                summaryEl.innerHTML = `// Longest conversation: <strong>${longest.addr_a} &lt;-&gt; ${longest.addr_b}</strong> &mdash; ${longest.duration}s, ${longest.pkts} packets, ${formatBytes(longest.bytes)}`;
+                summaryEl.innerHTML = `Longest conversation: <strong>${longest.addr_a} &lt;-&gt; ${longest.addr_b}</strong> &mdash; ${longest.duration}s, ${longest.pkts} packets, ${formatBytes(longest.bytes)}`;
                 summaryEl.classList.remove('hidden');
             } else {
                 summaryEl.classList.add('hidden');
@@ -296,7 +296,7 @@ document.addEventListener('DOMContentLoaded', () => {
         svg.innerHTML = '';
 
         if (!conversations.length || !endpoints.length) {
-            svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#808080" font-size="14">No conversation data to visualize.</text>';
+            svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#9aa4b2" font-size="14">No conversation data to visualize.</text>';
             return;
         }
 
@@ -337,16 +337,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const totalBytes = ipStats[ip] || 0;
 
             // Vertical line
-            html += `<line x1="${x}" y1="${lineStartY}" x2="${x}" y2="900" stroke="#1a1a2a" stroke-width="1" stroke-dasharray="4,4"/>`;
+            html += `<line x1="${x}" y1="${lineStartY}" x2="${x}" y2="900" stroke="#262d3b" stroke-width="1" stroke-dasharray="4,4"/>`;
 
             // IP label
-            html += `<text x="${x}" y="${headerY - 15}" text-anchor="middle" fill="#00f3ff" font-size="11" font-weight="bold">${ip}</text>`;
+            html += `<text x="${x}" y="${headerY - 15}" text-anchor="middle" fill="#e6e9ef" font-size="11" font-weight="bold">${ip}</text>`;
 
             // Bytes label
-            html += `<text x="${x}" y="${headerY}" text-anchor="middle" fill="#808080" font-size="9">${formatBytes(totalBytes)}</text>`;
+            html += `<text x="${x}" y="${headerY}" text-anchor="middle" fill="#6b7484" font-size="9">${formatBytes(totalBytes)}</text>`;
 
             // Endpoint dot
-            html += `<circle cx="${x}" cy="${lineStartY}" r="5" fill="#00f3ff" opacity="0.8"/>`;
+            html += `<circle cx="${x}" cy="${lineStartY}" r="5" fill="#4f8cff" opacity="0.9"/>`;
         });
 
         // Draw conversation lines
@@ -367,10 +367,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const thickness = Math.max(1, Math.min(6, (conv.pkts / maxPkts) * 6));
 
             // Color by primary protocol
-            let color = '#ffcc00'; // default
-            if (conv.protocols.includes('TCP')) color = '#00f3ff';
-            else if (conv.protocols.includes('UDP')) color = '#bc13fe';
-            else if (conv.protocols.includes('ICMP')) color = '#ff00ff';
+            let color = '#fbbf24'; // default
+            if (conv.protocols.includes('TCP')) color = '#4f8cff';
+            else if (conv.protocols.includes('UDP')) color = '#a78bfa';
+            else if (conv.protocols.includes('ICMP')) color = '#22d3ee';
 
             // Arrow line
             const midX = (x1 + x2) / 2;
