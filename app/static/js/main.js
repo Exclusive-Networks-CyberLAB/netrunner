@@ -103,6 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderPackets(data.packets);
             renderEndpoints(data.endpoints);
             renderConversations(data.conversations);
+            renderThreats(data.threats);
             renderFlowDiagram(data.conversations, data.endpoints);
             populateRewriterHosts(data.hosts);
 
@@ -285,6 +286,79 @@ document.addEventListener('DOMContentLoaded', () => {
             body.appendChild(tr);
         });
         updateSortIndicators('conversationsTable', conversationSort);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // THREAT ANALYSIS
+    // ═══════════════════════════════════════════════════════════════════
+
+    function renderThreats(threats) {
+        const list = document.getElementById('threatList');
+        const summary = document.getElementById('threatSummary');
+        const badge = document.getElementById('threatCountBadge');
+
+        threats = threats || [];
+
+        // Nav badge
+        if (threats.length) {
+            badge.textContent = threats.length;
+            badge.classList.remove('hidden');
+        } else {
+            badge.classList.add('hidden');
+        }
+
+        if (!threats.length) {
+            summary.classList.add('hidden');
+            list.innerHTML = '<div class="threat-clean">✓ No suspicious adversary activity detected in this capture.</div>';
+            return;
+        }
+
+        // Summary line by severity
+        const counts = threats.reduce((acc, t) => {
+            acc[t.severity] = (acc[t.severity] || 0) + 1;
+            return acc;
+        }, {});
+        const order = ['critical', 'high', 'medium', 'low'];
+        summary.innerHTML = `<strong>${threats.length}</strong> potential threat stream${threats.length === 1 ? '' : 's'} detected &mdash; `
+            + order.filter(s => counts[s])
+                .map(s => `<span class="sev-pill sev-${s}">${counts[s]} ${s}</span>`)
+                .join(' ');
+        summary.classList.remove('hidden');
+
+        list.innerHTML = '';
+        const frag = document.createDocumentFragment();
+
+        threats.forEach(t => {
+            const card = document.createElement('div');
+            card.className = `threat-card sev-border-${t.severity}`;
+
+            const reasons = (t.reasons || []).map(r => `<li>${escHtml(r)}</li>`).join('');
+            const mitre = t.mitre
+                ? `<a class="mitre-tag" href="https://attack.mitre.org/techniques/${t.mitre.replace('.', '/')}/" target="_blank" rel="noopener">${escHtml(t.mitre)}</a>`
+                : '';
+
+            card.innerHTML = `
+                <div class="threat-card-head">
+                    <div class="threat-title">
+                        <span class="sev-dot sev-${t.severity}"></span>
+                        <span class="threat-technique">${escHtml(t.technique)}</span>
+                        ${mitre}
+                    </div>
+                    <div class="threat-score" title="Threat score">
+                        <span class="score-num">${t.score}</span><span class="score-max">/100</span>
+                    </div>
+                </div>
+                <div class="threat-flow">
+                    <span class="flow-role adversary" title="Suspected adversary">${escHtml(t.adversary || 'unknown')}</span>
+                    <span class="flow-arrow">→</span>
+                    <span class="flow-role victim" title="Suspected victim/target">${escHtml(t.victim || 'unknown')}</span>
+                    <span class="threat-meta">${(t.protocols || []).join(', ')} · ${t.pkts || 0} pkts · ${formatBytes(t.bytes || 0)}</span>
+                </div>
+                <ul class="threat-reasons">${reasons}</ul>
+            `;
+            frag.appendChild(card);
+        });
+        list.appendChild(frag);
     }
 
     // ═══════════════════════════════════════════════════════════════════

@@ -73,6 +73,9 @@
                         <button class="view-mode-btn" data-view="flow">Traffic Flow</button>
                         <button class="view-mode-btn" data-view="endpoints">Endpoints</button>
                         <button class="view-mode-btn" data-view="conversations">Conversations</button>
+                        <button class="view-mode-btn view-mode-threats" data-view="threats">
+                            Threats <span class="threat-count-badge hidden" id="threatCountBadge">0</span>
+                        </button>
                     </div>
                     <div class="packet-count" id="packetCount"></div>
                 </div>
@@ -153,6 +156,14 @@
                         </thead>
                         <tbody id="conversationsBody"></tbody>
                     </table>
+                </div>
+
+                <!-- Threat Analysis View -->
+                <div id="view-threats" class="view-panel hidden">
+                    <div id="threatSummary" class="threat-summary hidden"></div>
+                    <div id="threatList" class="threat-list">
+                        <div class="placeholder">No analysis run yet.</div>
+                    </div>
                 </div>
             </div>
 

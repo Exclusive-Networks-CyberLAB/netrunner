@@ -5,10 +5,16 @@ NetRunner OS - PCAP Analysis & Rewrite Routes
 import os
 from flask import Blueprint, request, jsonify, current_app, send_file
 from werkzeug.utils import secure_filename
-from collections import defaultdict
-from scapy.all import PcapReader, PcapWriter, Ether, IP, TCP, UDP, ICMP, Raw, Dot1Q
+from collections import defaultdict, Counter
+from scapy.all import PcapReader, PcapWriter, Ether, IP, TCP, UDP, ICMP, Raw, Dot1Q, DNS, ARP
+
+from app.core.threat_analysis import analyze_threats
 
 bp = Blueprint('pcap', __name__)
+
+# Per-flow signal caps to bound memory on large captures
+_MAX_BEACON_TIMES = 500
+_MAX_DNS_QNAMES = 400
 
 PACKET_VIEWER_LIMIT = 2000
 
@@ -37,6 +43,21 @@ def analyze_pcap():
             'start_time': float('inf'), 'end_time': 0
         })
         timeline = []
+
+        # ── Threat-analysis signal collection ────────────────────────────────
+        def _new_dir():
+            return {'pkts': 0, 'bytes': 0, 'payload': 0, 'ports': Counter(),
+                    'syn': 0, 'synack': 0, 'rst': 0, 'psh': 0, 'syn_times': []}
+
+        def _new_flow():
+            return {'a': None, 'b': None, 'protocols': set(),
+                    'dirs': defaultdict(_new_dir),
+                    'dns_qnames': [], 'icmp_count': 0,
+                    'icmp_size_sum': 0, 'icmp_size_max': 0}
+
+        flows = defaultdict(_new_flow)
+        arp = {'ip_to_macs': defaultdict(set), 'mac_to_ips': defaultdict(set),
+               'gratuitous_by_mac': Counter()}
 
         with PcapReader(filepath) as pcap_reader:
             for i, packet in enumerate(pcap_reader):
@@ -74,6 +95,63 @@ def analyze_pcap():
                     c['protocols'].add(proto)
                     c['start_time'] = min(c['start_time'], ts)
                     c['end_time'] = max(c['end_time'], ts)
+
+                    # ── Threat signals (directional) ──
+                    flow = flows[conv_key]
+                    flow['a'], flow['b'] = conv_key
+                    flow['protocols'].add(proto)
+                    d = flow['dirs'][(src_ip, dst_ip)]
+                    d['pkts'] += 1
+                    d['bytes'] += pkt_len
+
+                    if packet.haslayer(Raw):
+                        d['payload'] += len(packet[Raw].load)
+
+                    if packet.haslayer(TCP):
+                        tcp = packet[TCP]
+                        d['ports'][int(tcp.dport)] += 1
+                        flags = str(tcp.flags)
+                        if 'S' in flags and 'A' not in flags:
+                            d['syn'] += 1
+                            if len(d['syn_times']) < _MAX_BEACON_TIMES:
+                                d['syn_times'].append(ts)
+                        elif 'S' in flags and 'A' in flags:
+                            d['synack'] += 1
+                        if 'R' in flags:
+                            d['rst'] += 1
+                        if 'P' in flags:
+                            d['psh'] += 1
+                    elif packet.haslayer(UDP):
+                        d['ports'][int(packet[UDP].dport)] += 1
+
+                    if packet.haslayer(ICMP) and packet.haslayer(Raw):
+                        sz = len(packet[Raw].load)
+                        flow['icmp_count'] += 1
+                        flow['icmp_size_sum'] += sz
+                        flow['icmp_size_max'] = max(flow['icmp_size_max'], sz)
+
+                    if packet.haslayer(DNS):
+                        dns = packet[DNS]
+                        if dns.qr == 0 and dns.qd is not None \
+                                and len(flow['dns_qnames']) < _MAX_DNS_QNAMES:
+                            try:
+                                qn = dns.qd.qname
+                                if isinstance(qn, bytes):
+                                    qn = qn.decode('utf-8', 'ignore')
+                                flow['dns_qnames'].append(qn)
+                            except Exception:
+                                pass
+
+                # ── ARP observations (no IP layer) ──
+                if packet.haslayer(ARP):
+                    a_layer = packet[ARP]
+                    psrc, hwsrc = a_layer.psrc, a_layer.hwsrc
+                    if psrc and hwsrc:
+                        arp['ip_to_macs'][psrc].add(hwsrc)
+                        arp['mac_to_ips'][hwsrc].add(psrc)
+                        # op 2 = reply; broadcast/unsolicited replies are the tell
+                        if int(a_layer.op) == 2:
+                            arp['gratuitous_by_mac'][hwsrc] += 1
 
                     # Timeline events (sampled for performance)
                     if i % max(1, i // 500 + 1) == 0 or i < 200:
@@ -210,12 +288,16 @@ def analyze_pcap():
             })
         conv_list.sort(key=lambda c: c['pkts'], reverse=True)
 
+        # Threat analysis (heuristic adversary -> victim scoring)
+        threats = analyze_threats(flows, arp)
+
         return jsonify({
             "packets": packet_summaries,
             "hosts": hosts,
             "endpoints": endpoint_list,
             "conversations": conv_list,
             "timeline": timeline,
+            "threats": threats,
             "total_packets": i + 1 if 'i' in dir() else 0,
             "filepath": filepath
         })
