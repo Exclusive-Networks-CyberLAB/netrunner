@@ -9,6 +9,7 @@ from collections import defaultdict, Counter
 from scapy.all import PcapReader, PcapWriter, Ether, IP, TCP, UDP, ICMP, Raw, Dot1Q, DNS, ARP
 
 from app.core.threat_analysis import analyze_threats
+from app.core.rewrite_planner import summarize_addressing, suggest_plan
 
 bp = Blueprint('pcap', __name__)
 
@@ -291,6 +292,10 @@ def analyze_pcap():
         # Threat analysis (heuristic adversary -> victim scoring)
         threats = analyze_threats(flows, arp)
 
+        # Addressing summary (internal/external split, subnets, gateway MAC)
+        # used by the rewrite-plan workflow.
+        addressing = summarize_addressing(hosts, endpoint_list)
+
         return jsonify({
             "packets": packet_summaries,
             "hosts": hosts,
@@ -298,6 +303,7 @@ def analyze_pcap():
             "conversations": conv_list,
             "timeline": timeline,
             "threats": threats,
+            "addressing": addressing,
             "total_packets": i + 1 if 'i' in dir() else 0,
             "filepath": filepath
         })
@@ -391,6 +397,46 @@ def rewrite_pcap():
             download_name=output_filename,
             mimetype='application/octet-stream'
         )
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/suggest_plan', methods=['POST'])
+def suggest_rewrite_plan():
+    """
+    Generate a rewrite plan that maps the capture's internal subnets into a lab
+    range. Accepts the addressing data already produced by /analyze_pcap so no
+    re-parse of the PCAP is needed.
+
+    Body: {
+        "hosts": [{"ip", "mac"}],      # or "addressing" from analyze response
+        "endpoints": [...],            # optional, for talker/proto context
+        "lab_subnet": "10.99.0.0/16",
+        "rewrite_macs": false,
+        "lab_gateway_mac": "aa:bb:cc:dd:ee:ff"  # optional
+    }
+    """
+    try:
+        data = request.get_json() or {}
+        lab_subnet = (data.get('lab_subnet') or '').strip()
+        if not lab_subnet:
+            return jsonify({'error': 'lab_subnet is required (e.g. 10.99.0.0/16).'}), 400
+
+        # Prefer a prebuilt addressing summary; otherwise derive it from hosts.
+        addressing = data.get('addressing')
+        if not addressing:
+            addressing = summarize_addressing(
+                data.get('hosts', []), data.get('endpoints', [])
+            )
+
+        plan = suggest_plan(
+            addressing,
+            lab_subnet,
+            rewrite_macs=bool(data.get('rewrite_macs', False)),
+            lab_gateway_mac=data.get('lab_gateway_mac'),
+        )
+        return jsonify({'addressing': addressing, 'plan': plan})
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500

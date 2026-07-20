@@ -16,6 +16,11 @@ This version is a major refactor of the original script, transforming it into a 
 *   **Smart Rewriting**:
     *   **Context Menu**: Right-click on any packet in the viewer to instantly add its Source/Destination IP or MAC to the rewrite rules.
     *   **Visual Feedback**: Selected packets are highlighted.
+*   **Rewrite Planner** (for NDR lab prep):
+    *   Analyzes a capture's addressing — internal vs external hosts, internal /24s, top talkers, protocol mix — and infers whether the capture is **routed** (one gateway MAC fronting many IPs) or a **flat L2** segment.
+    *   One click produces a rewrite plan that maps the capture's internal subnets into your lab range **preserving host octets** (`192.168.1.10` → `10.99.0.10`) and leaves external IPs alone so outbound-to-C2 flows still look external to the sensor.
+    *   MAC rewrites are left off unless your replay path has an active L2 device.
+    *   Available in the web UI (**Rewriter & Replay → Rewrite Planner**) and as a CLI (`pcap_planner.py`).
 *   **Improved UI/UX**:
     *   Refined "Cyberpunk" aesthetic with better CSS organization.
     *   Responsive layouts and sticky table headers.

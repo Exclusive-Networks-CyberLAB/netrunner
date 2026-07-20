@@ -1737,3 +1737,90 @@ select:focus {
     color: var(--accent);
     font-weight: 700;
 }
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* REWRITE PLANNER                                                      */
+/* ═══════════════════════════════════════════════════════════════════ */
+
+.addressing-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.75rem;
+}
+
+.addr-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+
+.addr-k {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+}
+
+.addr-v {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-bright);
+    font-family: 'JetBrains Mono', monospace;
+    word-break: break-word;
+}
+
+.plan-result {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+
+.plan-title {
+    margin: 0 0 0.6rem;
+    font-size: 0.9rem;
+    color: var(--accent);
+}
+
+.plan-list {
+    list-style: none;
+    margin: 0 0 0.75rem;
+    padding: 0;
+}
+
+.plan-list li {
+    padding: 0.25rem 0;
+    font-size: 0.85rem;
+    color: var(--text);
+}
+
+.plan-list code {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-bright);
+}
+
+.plan-notes {
+    list-style: disc;
+    margin: 0.5rem 0 0;
+    padding-left: 1.2rem;
+}
+
+.plan-notes li {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    padding: 0.15rem 0;
+}
+
+.plan-notes li.plan-warn {
+    color: var(--amber);
+}
+
+.plan-dim {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}

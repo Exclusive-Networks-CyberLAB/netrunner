@@ -106,6 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderThreats(data.threats);
             renderFlowDiagram(data.conversations, data.endpoints);
             populateRewriterHosts(data.hosts);
+            renderAddressingSummary(data.addressing);
 
             switchView('packets');
 
@@ -530,6 +531,109 @@ document.addEventListener('DOMContentLoaded', () => {
 
         return { ipMap, macMap, labels };
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // REWRITE PLANNER
+    // ═══════════════════════════════════════════════════════════════════
+
+    let lastPlan = null;
+
+    function renderAddressingSummary(addressing) {
+        const el = document.getElementById('addressingSummary');
+        if (!el) return;
+        if (!addressing) { el.innerHTML = ''; return; }
+
+        const subnets = (addressing.subnets || [])
+            .map(s => `${s.cidr} (${s.host_count})`).join(', ') || '—';
+        const gw = addressing.gateway_mac
+            ? `${addressing.gateway_mac} ${addressing.routed ? '(routed)' : ''}`
+            : (addressing.routed ? 'routed' : 'flat L2 segment');
+
+        el.innerHTML = `
+            <div class="addr-stat"><span class="addr-k">Internal hosts</span><span class="addr-v">${addressing.internal_count}</span></div>
+            <div class="addr-stat"><span class="addr-k">External hosts</span><span class="addr-v">${addressing.external_count}</span></div>
+            <div class="addr-stat"><span class="addr-k">Internal subnets</span><span class="addr-v">${escHtml(subnets)}</span></div>
+            <div class="addr-stat"><span class="addr-k">Path / gateway</span><span class="addr-v">${escHtml(gw)}</span></div>
+        `;
+    }
+
+    function renderPlan(plan) {
+        const el = document.getElementById('planResult');
+        const applyBtn = document.getElementById('applyPlanBtn');
+        if (!el) return;
+
+        const mappings = (plan.subnet_map || [])
+            .map(m => `<li><code>${escHtml(m.from)}</code> &rarr; <code>${escHtml(m.to)}</code> <span class="plan-dim">(${m.host_count} host${m.host_count === 1 ? '' : 's'})</span></li>`)
+            .join('');
+        const notes = (plan.notes || [])
+            .map(n => `<li>${escHtml(n)}</li>`).join('');
+        const warnings = (plan.warnings || [])
+            .map(w => `<li class="plan-warn">${escHtml(w)}</li>`).join('');
+
+        const ipCount = Object.keys(plan.ip_map || {}).length;
+        const macCount = Object.keys(plan.mac_map || {}).length;
+
+        el.innerHTML = `
+            <h4 class="plan-title">Proposed rewrite (${ipCount} IP, ${macCount} MAC)</h4>
+            ${mappings ? `<ul class="plan-list">${mappings}</ul>` : '<p class="plan-dim">No internal subnets to remap.</p>'}
+            ${notes ? `<ul class="plan-notes">${notes}</ul>` : ''}
+            ${warnings ? `<ul class="plan-notes">${warnings}</ul>` : ''}
+        `;
+        el.classList.remove('hidden');
+        if (applyBtn) applyBtn.classList.toggle('hidden', ipCount === 0 && macCount === 0);
+    }
+
+    document.getElementById('suggestPlanBtn').addEventListener('click', async () => {
+        if (!analysisData) { alert('Analyze a PCAP first.'); return; }
+        const labSubnet = document.getElementById('planLabSubnet').value.trim();
+        if (!labSubnet) { alert('Enter a lab subnet (e.g. 10.99.0.0/16).'); return; }
+
+        try {
+            const resp = await fetch('/suggest_plan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    addressing: analysisData.addressing,
+                    hosts: analysisData.hosts,
+                    endpoints: analysisData.endpoints,
+                    lab_subnet: labSubnet,
+                    rewrite_macs: document.getElementById('planRewriteMacs').checked,
+                    lab_gateway_mac: document.getElementById('planLabGwMac').value.trim() || null
+                })
+            });
+            const data = await resp.json();
+            if (data.error) { alert(`Error: ${data.error}`); return; }
+            lastPlan = data.plan;
+            renderPlan(data.plan);
+        } catch (err) {
+            alert(`Error: ${err.message}`);
+        }
+    });
+
+    document.getElementById('applyPlanBtn').addEventListener('click', () => {
+        if (!lastPlan) return;
+        const ipMap = lastPlan.ip_map || {};
+        const macMap = lastPlan.mac_map || {};
+        let filled = 0;
+
+        rewriteHostsBody.querySelectorAll('tr').forEach(tr => {
+            tr.querySelectorAll('.rewrite-input').forEach(inp => {
+                if (inp.dataset.field === 'new_ip' && ipMap[inp.dataset.origIp]) {
+                    inp.value = ipMap[inp.dataset.origIp];
+                    filled++;
+                }
+                if (inp.dataset.field === 'new_mac' && macMap[inp.dataset.origMac]) {
+                    inp.value = macMap[inp.dataset.origMac];
+                    filled++;
+                }
+            });
+        });
+
+        const applyBtn = document.getElementById('applyPlanBtn');
+        const original = applyBtn.textContent;
+        applyBtn.textContent = `✓ Applied ${filled} field${filled === 1 ? '' : 's'}`;
+        setTimeout(() => { applyBtn.textContent = original; }, 1800);
+    });
 
     // ═══════════════════════════════════════════════════════════════════
     // DOWNLOAD REWRITTEN PCAP
